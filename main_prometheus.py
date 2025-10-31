@@ -76,7 +76,7 @@ def main():
     # Save results
     experiment.save_results()
 
-    if __name__ == "__main__":
-        main()
+if __name__ == "__main__":
+    main()
 
     

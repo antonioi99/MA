@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import gc
 import json
+import os
 from typing import List, Dict, Tuple, Union, Any
 import sys
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,12 +16,13 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
 
-def predict_with_memory_management(documents, batch_size=8):
+def predict_with_memory_management(documents, model, tokenizer, batch_size=8):
     """
     Memory-efficient prediction function with batching and cleanup
     """
     documents = [str(d) for d in documents]
     all_probs = []
+
 
     # Process in smaller batches
     for i in range(0, len(documents), batch_size):

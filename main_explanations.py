@@ -17,18 +17,17 @@ def main():
 
     FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
 
-    model = AutoModelForSequenceClassification.from_pretrained(FINETUNED_CLASSIFICATION_MODEL, num_labels=2, device_map="auto")
-
+    # model = AutoModelForSequenceClassification.from_pretrained(FINETUNED_CLASSIFICATION_MODEL, num_labels=2, device_map="auto")
+    model = AutoModelForSequenceClassification.from_pretrained(
+    FINETUNED_CLASSIFICATION_MODEL,
+    num_labels=2,
+    device_map=None,   # Disable automatic sharding
+    torch_dtype="float32"  # Avoid mixed precision on CPU
+)
     tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
-    dataset_train = load_dataset("imdb", split="train")
     dataset_test = load_dataset("imdb", split="test")
 
-    def preprocess(example):
-        return tokenizer(example["text"], truncation=True, padding="max_length", max_length=128)
-
-    tokenized_dataset_train = dataset_train.map(preprocess, batched=True, num_proc=5)
-    tokenized_dataset_test = dataset_test.map(preprocess, batched=True, num_proc=5)
 
     # ===== WORK WITH A SUBSET =====
     # Take 128 samples (64 positive + 64 negative for balance)
@@ -65,7 +64,13 @@ def main():
     sample_texts = [dataset_test["text"][idx] for idx in subset_indices]
     labels_subset = [dataset_test["label"][idx] for idx in subset_indices]
 
-    probs = helper_functions_exp.predict_with_memory_management(sample_texts)
+    probs = helper_functions_exp.predict_with_memory_management(documents=sample_texts, model=model, tokenizer=tokenizer)
+    
+    def shap_predict(texts):
+        return helper_functions_exp.predict_with_memory_management(
+            documents=texts, model=model, tokenizer=tokenizer
+        )
+
 
     # Get predicted labels (0 = negative, 1 = positive)
     predicted_labels = np.argmax(probs, axis=1)
@@ -82,14 +87,14 @@ def main():
 
 
     explainer_shap = shap.Explainer(
-        helper_functions_exp.predict_with_memory_management,
+        shap_predict,
         shap.maskers.Text(tokenizer),
         algorithm="partition" # see choices at https://shap.readthedocs.io/en/latest/generated/shap.Explainer.html#shap.Explainer
         )
 
     shap_formatter = helper_functions_exp.ExplanationFormatter()
 
-    shap_values = explainer_shap(sample_texts[:64])
+    shap_values = explainer_shap(sample_texts[:2])
 
     formatted_text_SHAP = helper_functions_exp.extract_shap_as_text_all(shap_values)
     structured_text_SHAP = helper_functions_exp.extract_shap_as_structured_text_all(shap_values)
@@ -97,7 +102,7 @@ def main():
 
     data = {}
 
-    for idx, sample in enumerate(sample_texts[:64]):
+    for idx, sample in enumerate(sample_texts[:2]):
         data[idx] = {
             'formatted_text': formatted_text_SHAP[idx],
             'structured_text': structured_text_SHAP[idx],
@@ -109,51 +114,51 @@ def main():
 
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-    explainer_lime, predict_fn = helper_functions_exp.lime_explainer(model, tokenizer)
+    # explainer_lime, predict_fn = helper_functions_exp.lime_explainer(model, tokenizer)
 
-    explanations_lime = []
-    for i, sample_text in enumerate(sample_texts):
-        if i < 15:
-            print(f"\n--- Generating LIME explanation for Sample {i} ---")
-            explanation = explainer_lime.explain_instance(
-            sample_texts[i],
-            predict_fn,
-            num_features=15,
-            num_samples=1000
-            )
-            explanations_lime.append(explanation)
+    # explanations_lime = []
+    # for i, sample_text in enumerate(sample_texts):
+    #     if i < 15:
+    #         print(f"\n--- Generating LIME explanation for Sample {i} ---")
+    #         explanation = explainer_lime.explain_instance(
+    #         sample_texts[i],
+    #         predict_fn,
+    #         num_features=15,
+    #         num_samples=1000
+    #         )
+    #         explanations_lime.append(explanation)
 
-    lime_formatter = helper_functions_exp.ExplanationFormatter()
+    # lime_formatter = helper_functions_exp.ExplanationFormatter()
 
-    # Load explanations
-    # shap_formatter.load_explanations(shap_values, 'shap')
-    lime_formatter.load_explanations(explanations_lime, 'lime')
+    # # Load explanations
+    # # shap_formatter.load_explanations(shap_values, 'shap')
+    # lime_formatter.load_explanations(explanations_lime, 'lime')
 
-    formatted_text_LIME = lime_formatter.extract_as_text_all(threshold=0.01)
-    structured_text_LIME = lime_formatter.extract_as_structured_text_all(threshold=0.01)
-    top_words_LIME = lime_formatter.extract_top_words_with_scores_all()
+    # formatted_text_LIME = lime_formatter.extract_as_text_all(threshold=0.01)
+    # structured_text_LIME = lime_formatter.extract_as_structured_text_all(threshold=0.01)
+    # top_words_LIME = lime_formatter.extract_top_words_with_scores_all()
 
-    data = {}
+    # data = {}
 
-    for idx in range(len(formatted_text_LIME)):
-        data[idx + 15] = {
-            'formatted_text': formatted_text_LIME[idx],
-            'structured_text': structured_text_LIME[idx],
-            'top_words': top_words_LIME[idx]
-        }
+    # for idx in range(len(formatted_text_LIME)):
+    #     data[idx + 15] = {
+    #         'formatted_text': formatted_text_LIME[idx],
+    #         'structured_text': structured_text_LIME[idx],
+    #         'top_words': top_words_LIME[idx]
+    #     }
 
-    with open('lime.json', "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    # with open('lime.json', "w", encoding="utf-8") as f:
+    #     json.dump(data, f, indent=4, ensure_ascii=False)
 
-    # save_dict_with_explanations(filename='datadata.json',
-    #                             samples=sample_texts,
-    #                             labels=labels_subset,
-    #                             predictions=predicted_labels,
-    #                             shap=shap_exp,
-    #                             lime=lime_exp,
-    #                             type_of_explanations=exp_types,
-    #                             subset_indices=sorted(subset_indices)
-    #                             )
+    # # save_dict_with_explanations(filename='datadata.json',
+    # #                             samples=sample_texts,
+    # #                             labels=labels_subset,
+    # #                             predictions=predicted_labels,
+    # #                             shap=shap_exp,
+    # #                             lime=lime_exp,
+    # #                             type_of_explanations=exp_types,
+    # #                             subset_indices=sorted(subset_indices)
+    # #                             )
 
-    if __name__ == '__main__':
-        main()
+if __name__ == '__main__':
+    main()
