@@ -34,6 +34,7 @@ def main():
 )
     tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
+    dataset_train = load_dataset("imdb", split="train")
     dataset_test = load_dataset("imdb", split="test")
 
 
@@ -42,12 +43,12 @@ def main():
     subset_size = 10
 
     
-    negative_samples = [i for i, label in enumerate(dataset_test['label']) if label == 0][:subset_size//2]
-    positive_samples = [i for i, label in enumerate(dataset_test['label']) if label == 1][:subset_size//2]
+    negative_samples = [i for i, label in enumerate(dataset_train['label']) if label == 0][:subset_size//2]
+    positive_samples = [i for i, label in enumerate(dataset_train['label']) if label == 1][:subset_size//2]
 
     subset_indices = negative_samples + positive_samples
-    subset_texts = [dataset_test['text'][i] for i in subset_indices]
-    subset_labels = [dataset_test['label'][i] for i in subset_indices]
+    subset_texts = [dataset_train['text'][i] for i in subset_indices]
+    subset_labels = [dataset_train['label'][i] for i in subset_indices]
 
     print(f"Working with {len(subset_texts)} samples")
     print(f"Positive: {sum(subset_labels)}")
