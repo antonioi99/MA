@@ -17,6 +17,9 @@ def main():
                         type=str, 
                         choices=["lime", "shap", "formatter"], 
                         required=True)
+    parser.add_argument("--start",
+                        type=int,
+                        required=True)
     args = parser.parse_args()
 
     HF_TOKEN = "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"
@@ -40,11 +43,13 @@ def main():
 
     # ===== WORK WITH A SUBSET =====
 
-    subset_size = 10
+    subset_size = 100
+    start = args.start
+    end = subset_size // 2 + start
 
     
-    negative_samples = [i for i, label in enumerate(dataset_train['label']) if label == 0][:subset_size//2]
-    positive_samples = [i for i, label in enumerate(dataset_train['label']) if label == 1][:subset_size//2]
+    negative_samples = [i for i, label in enumerate(dataset_train['label']) if label == 0][start:end]
+    positive_samples = [i for i, label in enumerate(dataset_train['label']) if label == 1][start:end]
 
     subset_indices = negative_samples + positive_samples
     subset_texts = [dataset_train['text'][i] for i in subset_indices]
@@ -138,11 +143,10 @@ def main():
         ##############################
         # GENERATE RANDOM EXPLANATIONS
         ##############################
-        for idx in range(n):
-            print(f"\n--- Generating RANDOM SHAP explanation {idx+1}/{n} ---")
+        for idx in tqdm(range(n), desc="Generating RANDOM SHAP explanation"):
             
             # Generate SHAP values for a single sample
-            shap_values_random = explainer_shap_random([subset_texts[idx]])
+            shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
             
             with open(f'shap/shap_random/shap_values_random_{idx}.pkl', 'wb') as f:
                 pickle.dump(shap_values_random, f)
