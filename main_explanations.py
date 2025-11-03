@@ -3,15 +3,14 @@ import os
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import helper_functions, helper_functions_exp
 import numpy as np
-import shap
 import json
 import argparse
-from lime import lime_text
-from sklearn.pipeline import make_pipeline
-from lime.lime_text import LimeTextExplainer
 import pickle
+from tqdm import tqdm
 
 def main():
+
+    import shap
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp", 
@@ -83,8 +82,13 @@ def main():
 
     if args.exp == 'shap':
 
+        # def shap_predict(texts):
+        #     return helper_functions_exp.predict_with_memory_management(
+        #         documents=texts, model=model, tokenizer=tokenizer
+        #     )
+
         def shap_predict(texts):
-            return helper_functions_exp.predict_with_memory_management(
+            return helper_functions_exp.predict_fast(
                 documents=texts, model=model, tokenizer=tokenizer
             )
 
@@ -113,22 +117,22 @@ def main():
 
 
 
-        n = len(subset_size)  # Number of explanations to generate
+        n = subset_size  # Number of explanations to generate
 
         #######################
         # GENERATE EXPLANATIONS
         #######################
 
-        for idx in range(n):
-            print(f"\n--- Generating SHAP explanation {idx+1}/{n} ---")
+        for idx in tqdm(range(n), desc="Generating SHAP explanations"):
+
             
             # Generate SHAP values for a single sample
-            shap_values = explainer_shap([subset_texts[idx]])
+            shap_values = explainer_shap([subset_texts[idx]], silent=True)
             
-            with open(f'shap_raw/shap_values_{idx}.pkl', 'wb') as f:
+            with open(f'shap/shap_raw/shap_values_{idx}.pkl', 'wb') as f:
                 pickle.dump(shap_values, f)
     
-            print(f"Saved raw SHAP values {idx+1}")
+            print(f"Saved file 'shap/shap_raw/shap_values_{idx}.pkl'")
         
         ##############################
         # GENERATE RANDOM EXPLANATIONS
@@ -139,10 +143,10 @@ def main():
             # Generate SHAP values for a single sample
             shap_values_random = explainer_shap_random([subset_texts[idx]])
             
-            with open(f'shap_random/shap_values_random_{idx}.pkl', 'wb') as f:
+            with open(f'shap/shap_random/shap_values_random_{idx}.pkl', 'wb') as f:
                 pickle.dump(shap_values_random, f)
     
-            print(f"Saved RANDOM SHAP values {idx+1}")
+            print(f"Saved file 'shap/shap_random/shap_values_random_{idx}.pkl'")
 
 
         ####################################
@@ -165,6 +169,9 @@ def main():
 
 
     if args.exp == 'lime':
+
+        from lime import lime_text
+        from lime.lime_text import LimeTextExplainer
     
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 

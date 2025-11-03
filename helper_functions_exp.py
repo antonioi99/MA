@@ -9,9 +9,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer
 import numpy as np
-from lime import lime_text
-from sklearn.pipeline import make_pipeline
-from lime.lime_text import LimeTextExplainer
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
@@ -53,6 +51,55 @@ def predict_with_memory_management(documents, model, tokenizer, batch_size=8):
 
 
     return np.array(all_probs)
+
+
+def predict_with_memory_management_faster(documents, model, tokenizer, batch_size=64):
+    """
+    Faster prediction function for systems with sufficient memory
+    """
+    documents = [str(d) for d in documents]
+    all_probs = []
+
+    # Process in larger batches
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i:i + batch_size]
+
+        # Prepare inputs
+        inputs = tokenizer(
+            batch,
+            padding=True,
+            truncation=True,
+            max_length=512,  # Increased from 128 if you need longer texts
+            return_tensors="pt"
+        ).to(model.device)
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            all_probs.append(probs.cpu().numpy())
+
+        # Minimal cleanup - only delete inputs/outputs
+        del inputs, outputs
+
+    return np.concatenate(all_probs, axis=0)
+
+def predict_fast(documents, model, tokenizer, batch_size=64):
+    """
+    Maximum speed version - use only if you have plenty of memory
+    """
+    documents = [str(d) for d in documents]
+    all_probs = []
+
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i:i + batch_size]
+        inputs = tokenizer(batch, padding=True, truncation=True, 
+                          max_length=512, return_tensors="pt").to(model.device)
+        
+        with torch.no_grad():
+            probs = torch.nn.functional.softmax(model(**inputs).logits, dim=-1)
+            all_probs.append(probs.cpu().numpy())
+
+    return np.concatenate(all_probs, axis=0)
 
 
 class ExplanationFormatter:
@@ -305,6 +352,9 @@ def lime_explainer(model, tokenizer):
     """
     LIME explainer that works directly with the LLaMA model
     """
+
+    from lime import lime_text
+    from lime.lime_text import LimeTextExplainer
 
     def predict_probs(list_of_texts):
         """
