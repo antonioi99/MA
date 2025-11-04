@@ -10,17 +10,20 @@ from tqdm import tqdm
 
 def main():
 
-    import shap
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp", 
                         type=str, 
                         choices=["lime", "shap", "formatter"], 
                         required=True)
+    parser.add_argument("--subset_size",
+                        type=int,
+                        required=True)
     parser.add_argument("--start",
                         type=int,
                         required=True)
     args = parser.parse_args()
+
+    print(f"\n\nGenerating explanations with idx in range {(args.start)} - {args.start + args.subset_size}")
 
     HF_TOKEN = "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"
     os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
@@ -43,15 +46,17 @@ def main():
 
     # ===== WORK WITH A SUBSET =====
 
-    subset_size = 100
+    subset_size = args.subset_size
     start = args.start
     end = subset_size // 2 + start
+    # end = start + subset_size
 
     
     negative_samples = [i for i, label in enumerate(dataset_train['label']) if label == 0][start:end]
     positive_samples = [i for i, label in enumerate(dataset_train['label']) if label == 1][start:end]
 
     subset_indices = negative_samples + positive_samples
+    # subset_indices = positive_samples
     subset_texts = [dataset_train['text'][i] for i in subset_indices]
     subset_labels = [dataset_train['label'][i] for i in subset_indices]
 
@@ -92,6 +97,8 @@ def main():
         #     return helper_functions_exp.predict_with_memory_management(
         #         documents=texts, model=model, tokenizer=tokenizer
         #     )
+
+        import shap
 
         def shap_predict(texts):
             return helper_functions_exp.predict_fast(
@@ -134,24 +141,27 @@ def main():
             
             # Generate SHAP values for a single sample
             shap_values = explainer_shap([subset_texts[idx]], silent=True)
+            shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
             
-            with open(f'shap/shap_raw/shap_values_{idx}.pkl', 'wb') as f:
+            with open(f'shap/shap_raw/shap_values_{subset_indices[idx]}.pkl', 'wb') as f:
                 pickle.dump(shap_values, f)
+            with open(f'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl', 'wb') as f:
+                pickle.dump(shap_values_random, f)
+            tqdm.write(f"Saved file 'shap/shap_raw/shap_values_{subset_indices[idx]}.pkl'")
+            tqdm.write(f"Saved file 'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl'")
     
-            print(f"Saved file 'shap/shap_raw/shap_values_{idx}.pkl'")
         
         ##############################
         # GENERATE RANDOM EXPLANATIONS
         ##############################
-        for idx in tqdm(range(n), desc="Generating RANDOM SHAP explanation"):
+        # for idx in tqdm(range(n), desc="Generating RANDOM SHAP explanation"):
             
-            # Generate SHAP values for a single sample
-            shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
+        #     # Generate SHAP values for a single sample
+        #     shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
             
-            with open(f'shap/shap_random/shap_values_random_{idx}.pkl', 'wb') as f:
-                pickle.dump(shap_values_random, f)
-    
-            print(f"Saved file 'shap/shap_random/shap_values_random_{idx}.pkl'")
+        #     with open(f'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl', 'wb') as f:
+        #         pickle.dump(shap_values_random, f)
+        #     tqdm.write(f"Saved file 'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl'")
 
 
         ####################################
