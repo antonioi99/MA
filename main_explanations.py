@@ -1,4 +1,4 @@
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 import os
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import helper_functions, helper_functions_exp
@@ -21,6 +21,13 @@ def main():
     parser.add_argument("--start",
                         type=int,
                         required=True)
+    parser.add_argument("--set",
+                        type=str,
+                        choices=["dev", "train"],
+                        required=True)
+    parser.add_argument("--only_positive",
+                        type=bool,
+                        required=False)
     args = parser.parse_args()
 
     print(f"\n\nGenerating explanations with idx in range {(args.start)} - {args.start + args.subset_size}")
@@ -43,22 +50,31 @@ def main():
     dataset_train = load_dataset("imdb", split="train")
     dataset_test = load_dataset("imdb", split="test")
 
+    dataset_dev = concatenate_datasets([
+        dataset_test.select(range(0, 7500)),
+        dataset_test.select(range(17500, 25000))
+    ])
+
+    dataset_test = dataset_test.select(range(7500, 17500))
+
 
     # ===== WORK WITH A SUBSET =====
 
     subset_size = args.subset_size
     start = args.start
-    end = subset_size // 2 + start
-    # end = start + subset_size
+    end = start + subset_size if args.only_positive else subset_size // 2 + start
 
+    if args.set == 'train':
+        dataset_split = dataset_train
+    if args.set == 'dev':
+        dataset_split = dataset_dev
     
-    negative_samples = [i for i, label in enumerate(dataset_train['label']) if label == 0][start:end]
-    positive_samples = [i for i, label in enumerate(dataset_train['label']) if label == 1][start:end]
+    negative_samples = [i for i, label in enumerate(dataset_split['label']) if label == 0][start:end]
+    positive_samples = [i for i, label in enumerate(dataset_split['label']) if label == 1][start:end]
 
-    subset_indices = negative_samples + positive_samples
-    # subset_indices = positive_samples
-    subset_texts = [dataset_train['text'][i] for i in subset_indices]
-    subset_labels = [dataset_train['label'][i] for i in subset_indices]
+    subset_indices = positive_samples if args.only_positive else negative_samples + positive_samples
+    subset_texts = [dataset_split['text'][i] for i in subset_indices]
+    subset_labels = [dataset_split['label'][i] for i in subset_indices]
 
     print(f"Working with {len(subset_texts)} samples")
     print(f"Positive: {sum(subset_labels)}")
@@ -125,43 +141,33 @@ def main():
             algorithm="partition" # see choices at https://shap.readthedocs.io/en/latest/generated/shap.Explainer.html#shap.Explainer
             )
         
-        os.makedirs('shap/shap_raw', exist_ok=True)
-        os.makedirs('shap/shap_random', exist_ok=True)
+        folder_raw = f'shap/{args.set}_set/shap_raw'
+        folder_random = f'shap/{args.set}_set/shap_random'
+        os.makedirs(folder_raw, exist_ok=True)
+        os.makedirs(folder_random, exist_ok=True)
 
-
-
-        n = subset_size  # Number of explanations to generate
 
         #######################
         # GENERATE EXPLANATIONS
         #######################
 
-        for idx in tqdm(range(n), desc="Generating SHAP explanations"):
-
-            
+        for idx in tqdm(range(subset_size), desc="Generating SHAP explanations"):
             # Generate SHAP values for a single sample
             shap_values = explainer_shap([subset_texts[idx]], silent=True)
             shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
             
-            with open(f'shap/shap_raw/shap_values_{subset_indices[idx]}.pkl', 'wb') as f:
+            # Save both versions
+            raw_path = f'{folder_raw}/shap_values_{subset_indices[idx]}.pkl'
+            random_path = f'{folder_random}/shap_values_random_{subset_indices[idx]}.pkl'
+            
+            with open(raw_path, 'wb') as f:
                 pickle.dump(shap_values, f)
-            with open(f'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl', 'wb') as f:
+            with open(random_path, 'wb') as f:
                 pickle.dump(shap_values_random, f)
-            tqdm.write(f"Saved file 'shap/shap_raw/shap_values_{subset_indices[idx]}.pkl'")
-            tqdm.write(f"Saved file 'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl'")
+            
+            tqdm.write(f"Saved file '{raw_path}'")
+            tqdm.write(f"Saved file '{random_path}'")
     
-        
-        ##############################
-        # GENERATE RANDOM EXPLANATIONS
-        ##############################
-        # for idx in tqdm(range(n), desc="Generating RANDOM SHAP explanation"):
-            
-        #     # Generate SHAP values for a single sample
-        #     shap_values_random = explainer_shap_random([subset_texts[idx]], silent=True)
-            
-        #     with open(f'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl', 'wb') as f:
-        #         pickle.dump(shap_values_random, f)
-        #     tqdm.write(f"Saved file 'shap/shap_random/shap_values_random_{subset_indices[idx]}.pkl'")
 
 
         ####################################
@@ -169,7 +175,7 @@ def main():
         ####################################
         
         # data = {}
-        # for idx in range(n):
+        # for idx in range(subset_size):
         #     with open(f'shap/shap_raw/shap_values_{idx}.pkl', 'rb') as f:
         #         shap_values = pickle.load(f)
             
