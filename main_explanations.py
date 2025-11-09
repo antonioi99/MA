@@ -30,7 +30,6 @@ def main():
                         required=False)
     args = parser.parse_args()
 
-    print(f"\n\nGenerating explanations with idx in range {(args.start)} - {args.start + args.subset_size}")
 
     HF_TOKEN = "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"
     os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
@@ -63,6 +62,8 @@ def main():
     subset_size = args.subset_size
     start = args.start
     end = start + subset_size if args.only_positive else subset_size // 2 + start
+
+    print(f"\n\nGenerating explanations with idx in range {(start)} - {end}")
 
     if args.set == 'train':
         dataset_split = dataset_train
