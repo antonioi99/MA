@@ -1,3 +1,0 @@
-vector casuale bei shap per avere una baseline; sanity check
-
-shap code schicken
