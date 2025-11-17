@@ -199,7 +199,7 @@ def main():
         processor = helper_functions_exp.ExplanationProcessor(formatter)
 
 
-        folder_explanations_converted = f'explanations4NLP/{args.set}_set'
+        folder_explanations_converted = f'explanations4NLP'
         file_explanations_def = os.path.join(folder_explanations_converted, f'explanations_{start}_{end}.json')
         os.makedirs(folder_explanations_converted, exist_ok=True)
         

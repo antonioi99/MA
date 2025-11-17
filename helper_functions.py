@@ -1,144 +1,133 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 from dataclasses import dataclass
+from typing import Dict, List, Any
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from datetime import datetime
+from tqdm import tqdm
+from datasets import load_dataset, concatenate_datasets
+import numpy as np
 import random
 import json
 import random
 import torch
-import re
 import os
-import sys
-from typing import Dict, List, Tuple, Any, Optional
-from dataclasses import dataclass
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from datetime import datetime
-from datasets import load_dataset
 
-# Main grouping function
-def create_similarity_groups(texts, labels, group_size=4, max_features=5000):
+
+def create_similarity_groups_from_data(json_file_path, output_json_path, test_texts, max_features=5000):
     """
-    Group texts by TF-IDF + cosine similarity with balanced labels.
-
+    Create similarity groups using test set from IMDB and dev set from JSON file.
+    
     Args:
-        texts: List of text strings
-        labels: List of labels (0 for negative, 1 for positive)
-        group_size: Size of each group (default 4: 2 positive + 2 negative)
+        json_file_path: Path to JSON file containing dev set with predictions
+        output_json_path: Path to save the output JSON file
+        test_texts: texts form the test set
         max_features: Maximum features for TF-IDF vectorizer
-
+    
     Returns:
-        List of groups, each containing indices, labels, texts, and similarity score
-    """
-    # Separate by labels
-    positive_indices = [i for i, label in enumerate(labels) if label == 1]
-    negative_indices = [i for i, label in enumerate(labels) if label == 0]
-
-    print(f"Total texts: {len(texts)}")
-    print(f"Positive reviews: {len(positive_indices)}")
-    print(f"Negative reviews: {len(negative_indices)}")
-
-    # Compute TF-IDF
-    print("\nComputing TF-IDF vectors...")
-    vectorizer = TfidfVectorizer(max_features=max_features, stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform(texts)
-
-    # Compute cosine similarity
-    print("Computing cosine similarity...")
-    cosine_sim = cosine_similarity(tfidf_matrix)
-
-    # Create groups
-    print("Creating similarity groups...")
-    groups = []
-    used_positive = set()
-    used_negative = set()
-
-    for pos_idx in positive_indices:
-        if pos_idx in used_positive:
-            continue
-
-        # Find most similar positive review
-        pos_similarities = [(i, cosine_sim[pos_idx][i])
-                           for i in positive_indices
-                           if i != pos_idx and i not in used_positive]
-
-        if not pos_similarities:
-            continue
-
-        pos_similarities.sort(key=lambda x: x[1], reverse=True)
-        second_pos_idx = pos_similarities[0][0]
-
-        # Find two most similar negative reviews
-        avg_pos_vector = (tfidf_matrix[pos_idx] + tfidf_matrix[second_pos_idx]) / 2
-
-        neg_similarities = []
-        for neg_idx in negative_indices:
-            if neg_idx not in used_negative:
-                sim = cosine_similarity(avg_pos_vector, tfidf_matrix[neg_idx])[0][0]
-                neg_similarities.append((neg_idx, sim))
-
-        if len(neg_similarities) < 2:
-            continue
-
-        neg_similarities.sort(key=lambda x: x[1], reverse=True)
-        first_neg_idx = neg_similarities[0][0]
-        second_neg_idx = neg_similarities[1][0]
-
-        # Create group
-        group = {
-            'indices': [pos_idx, second_pos_idx, first_neg_idx, second_neg_idx],
-            'labels': [labels[pos_idx], labels[second_pos_idx],
-                      labels[first_neg_idx], labels[second_neg_idx]],
-            'texts': [texts[pos_idx], texts[second_pos_idx],
-                     texts[first_neg_idx], texts[second_neg_idx]],
-            'avg_similarity': np.mean([
-                cosine_sim[pos_idx][second_pos_idx],
-                cosine_sim[first_neg_idx][second_neg_idx],
-                cosine_sim[pos_idx][first_neg_idx],
-                cosine_sim[pos_idx][second_neg_idx],
-                cosine_sim[second_pos_idx][first_neg_idx],
-                cosine_sim[second_pos_idx][second_neg_idx]
-            ])
+        Dictionary mapping test_id -> {
+            "test_instance": text,
+            "dev_group": [list of dev instance IDs],
+            "dev_predictions": [list of corresponding dev predictions]
         }
-
-        groups.append(group)
-        used_positive.add(pos_idx)
-        used_positive.add(second_pos_idx)
-        used_negative.add(first_neg_idx)
-        used_negative.add(second_neg_idx)
-
-    return groups
-
-
-# Token filtering function (not used by default)
-def filter_by_token_count(texts, labels, tokenizer, max_tokens):
     """
-    Filter texts by token count.
+    test_texts = list(test_texts)
+    test_ids = list(range(len(test_texts)))  # Just use indices as IDs
+    
+    print(f"Test set size: {len(test_texts)}")
+    
+    # Load dev set from JSON
+    print(f"Loading dev set from {json_file_path}...")
+    with open(json_file_path, 'r', encoding='utf-8') as f:
+        dev_data = json.load(f)
+    
+    # Extract dev information
+    dev_ids = []
+    dev_texts = []
+    dev_predictions = []
+    
+    for sample_idx, data in dev_data.items():
+        dev_ids.append(int(sample_idx))
+        dev_texts.append(data['sample'])
+        dev_predictions.append(data['prediction'])
+    
+    print(f"Dev set size: {len(dev_texts)}")
+    
+    # Separate dev set by predictions
+    dev_positive_indices = [i for i, pred in enumerate(dev_predictions) if pred == 1]
+    dev_negative_indices = [i for i, pred in enumerate(dev_predictions) if pred == 0]
+    
+    print(f"Dev positive predictions: {len(dev_positive_indices)}, Dev negative predictions: {len(dev_negative_indices)}")
+    
+    # Compute TF-IDF on combined corpus (test + dev)
+    print("\nComputing TF-IDF vectors...")
+    all_texts = test_texts + dev_texts
+    vectorizer = TfidfVectorizer(max_features=max_features, stop_words='english')
+    all_tfidf = vectorizer.fit_transform(all_texts)
+    
+    # Split back into test and dev
+    test_tfidf = all_tfidf[:len(test_texts)]
+    dev_tfidf = all_tfidf[len(test_texts):]
+    
+    # Compute similarity between test and dev
+    print("Computing cosine similarity between test and dev sets...")
+    test_dev_similarity = cosine_similarity(test_tfidf, dev_tfidf)
+    
+    # Create groups
+    print("Creating groups for each test instance...")
+    result_dict = {}
+    
+    # Load existing results if file exists
+    if os.path.exists(output_json_path):
+        with open(output_json_path, 'r', encoding='utf-8') as f:
+            result_dict = json.load(f)
+        print(f"Loaded existing results from {output_json_path} with {len(result_dict)} instances")
+    else:
+        result_dict = {}
+    
+    for test_idx in tqdm(range(len(test_texts)), desc="Processing test instances"):
+        # Skip if already processed
+        if str(test_ids[test_idx]) in result_dict:
+            continue
+            
+        # Get similarities to all dev instances
+        similarities = test_dev_similarity[test_idx]
+        
+        # Find top 2 most similar positive dev instances
+        pos_similarities = [(dev_positive_indices[i], similarities[dev_positive_indices[i]]) 
+                           for i in range(len(dev_positive_indices))]
+        pos_similarities.sort(key=lambda x: x[1], reverse=True)
+        top_2_positive = [idx for idx, _ in pos_similarities[:2]]
+        
+        # Find top 2 most similar negative dev instances
+        neg_similarities = [(dev_negative_indices[i], similarities[dev_negative_indices[i]]) 
+                           for i in range(len(dev_negative_indices))]
+        neg_similarities.sort(key=lambda x: x[1], reverse=True)
+        top_2_negative = [idx for idx, _ in neg_similarities[:2]]
+        
+        # Combine and randomize order
+        dev_group_indices = top_2_positive + top_2_negative
+        random.shuffle(dev_group_indices)
+        
+        # Map to actual dev IDs and predictions
+        dev_group_ids = [dev_ids[i] for i in dev_group_indices]
+        dev_group_predictions = [dev_predictions[i] for i in dev_group_indices]
+        
+        # Store in result dictionary
+        result_dict[test_ids[test_idx]] = {
+            "test_instance": test_texts[test_idx],
+            "dev_group": dev_group_ids,
+            "dev_predictions": dev_group_predictions
+        }
+        
+        # Save to JSON after each instance
+        with open(output_json_path, 'w', encoding='utf-8') as f:
+            json.dump(result_dict, f, indent=4, ensure_ascii=False)
+    
+    print(f"\nCompleted! Created groups for {len(result_dict)} test instances")
+    print(f"Results saved to {output_json_path}")
+    return result_dict
 
-    Args:
-        texts: List of text strings
-        labels: List of labels
-        tokenizer: HuggingFace tokenizer
-        max_tokens: Maximum token count threshold
-
-    Returns:
-        filtered_texts, filtered_labels, filtered_indices
-    """
-    filtered_indices = []
-    filtered_texts = []
-    filtered_labels = []
-
-    for idx, (text, label) in enumerate(zip(texts, labels)):
-        token_count = len(tokenizer.encode(text))
-        if token_count <= max_tokens:
-            filtered_indices.append(idx)
-            filtered_texts.append(text)
-            filtered_labels.append(label)
-
-    print(f"Original size: {len(texts)}")
-    print(f"Filtered size: {len(filtered_texts)}")
-    print(f"Removed: {len(texts) - len(filtered_texts)} reviews")
-
-    return filtered_texts, filtered_labels, filtered_indices
 
 
 @dataclass
