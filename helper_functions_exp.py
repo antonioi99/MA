@@ -3,11 +3,9 @@ import torch
 import gc
 import json
 import os
-from typing import List, Dict, Tuple, Union, Any
-import sys
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoTokenizer
+import pickle
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional
 import numpy as np
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -170,7 +168,7 @@ class ExplanationFormatter:
         else:
             raise ValueError("explanation_type must be 'shap' or 'lime'")
 
-    def extract_as_text_all(self, threshold: float = 0.01) -> List[str]:
+    def extract_as_text_scores(self, threshold: float) -> List[str]:
         """
         Format explanations as text with inline scores
         """
@@ -189,7 +187,7 @@ class ExplanationFormatter:
 
         return results
 
-    def extract_as_structured_text_all(self, threshold: float = 0.01) -> List[str]:
+    def extract_as_structured_text_scores(self, threshold: float) -> List[str]:
         """
         Format explanations as structured text with positive/negative sections
         """
@@ -204,9 +202,9 @@ class ExplanationFormatter:
                 if abs(score) < threshold:
                     neutral_words.append(word)
                 elif score > 0:
-                    positive_words.append(f"{word}(+{score:.3f})")
+                    positive_words.append(f"{word}[+{score:.3f}]")
                 else:
-                    negative_words.append(f"{word}({score:.3f})")
+                    negative_words.append(f"{word}[{score:.3f}]")
 
             result_parts = []
             if positive_words:
@@ -220,7 +218,7 @@ class ExplanationFormatter:
 
         return results
 
-    def extract_top_words_with_scores_all(self, top_n: int = 20) -> List[str]:
+    def extract_top_words_scores(self, top_n: int = 20) -> List[str]:
         """
         Extract top N most influential words with their scores
         """
@@ -234,11 +232,213 @@ class ExplanationFormatter:
             result_parts = []
             for word, score in top_words:
                 sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-                result_parts.append(f"{word}: {score:.3f} ({sentiment})")
+                result_parts.append(f"{word}: {score:.3f} [{sentiment}]")
 
             results.append("\n".join(result_parts))
 
         return results
+    
+    def extract_as_text_labels(self, threshold: float = 0.01) -> List[str]:
+        """
+        Format explanations as text with POSITIVE/NEGATIVE labels instead of scores
+        
+        Example: "This[POSITIVE] is[NEGATIVE] a good[POSITIVE] film[POSITIVE]"
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            result_parts = []
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    result_parts.append(word)
+                else:
+                    label = "POSITIVE" if score >= 0 else "NEGATIVE"
+                    result_parts.append(f"{word}[{label}]")
+
+            results.append(" ".join(result_parts))
+
+        return results
+
+
+    def extract_as_structured_text_labels(self, threshold: float = 0.01) -> List[str]:
+        """
+        Format explanations as structured text with positive/negative sections but WITHOUT scores
+        
+        Example:
+        POSITIVE SENTIMENT: This good film very funny
+        NEGATIVE SENTIMENT: is after no Ernest !
+        NEUTRAL: . Yet
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            positive_words = []
+            negative_words = []
+            neutral_words = []
+
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    neutral_words.append(word)
+                elif score > 0:
+                    positive_words.append(word)
+                else:
+                    negative_words.append(word)
+
+            result_parts = []
+            if positive_words:
+                result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
+            if negative_words:
+                result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
+            if neutral_words:
+                result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
+
+            results.append("\n".join(result_parts))
+
+        return results
+
+
+    def extract_top_words_labels(self, top_n: int = 20) -> List[str]:
+        """
+        Extract top N most influential words with POSITIVE/NEGATIVE labels (no scores)
+        
+        Example:
+        !: NEGATIVE
+        good: POSITIVE
+        no: NEGATIVE
+        funny: POSITIVE
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            word_scores = list(zip(words, scores))
+            word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            top_words = word_scores[:top_n]
+            result_parts = []
+            for word, score in top_words:
+                sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+                result_parts.append(f"{word}: {sentiment}")
+
+            results.append("\n".join(result_parts))
+
+        return results
+    
+class ExplanationProcessor:
+    """
+    Processes SHAP/LIME explanations from pkl files and converts them to JSON format
+    """
+    
+    def __init__(self, formatter: ExplanationFormatter):
+        self.formatter = formatter
+        self.explanation_types = ['text', 'structured_text', 'top_words']
+    
+    def load_explanation_from_pkl(self, pkl_path: str):
+        """Load a single explanation from a pkl file"""
+        with open(pkl_path, 'rb') as f:
+            return pickle.load(f)
+    
+    def process_single_explanation(self, explanation, explanation_type: str, threshold: float) -> Dict[str, str]:
+        """
+        Process a single explanation and return all formatted versions
+        
+        Returns:
+            dict with keys: 'text', 'structured_text', 'top_words'
+        """
+        # Load explanation into formatter
+        self.formatter.load_explanations(explanation, explanation_type)
+        
+        # Generate all formats
+        formatted = {
+            'text_scores': self.formatter.extract_as_text_scores(threshold)[0],
+            'text_labels': self.formatter.extract_as_text_labels(threshold=threshold)[0],
+
+            'structured_text_scores': self.formatter.extract_as_structured_text_scores(threshold)[0],
+            'structured_text_labels': self.formatter.extract_as_structured_text_labels(threshold=threshold)[0],
+
+            'top_words_scores': self.formatter.extract_top_words_scores(top_n=20)[0],
+            'top_words_labels': self.formatter.extract_top_words_labels(top_n=20)[0]
+            
+        }
+        
+        return formatted
+    
+    def process_explanations_from_files(
+        self,
+        shap_pkl_dir: str,
+        shap_random_pkl_dir: str,  #for random SHAP
+        lime_pkl_dir: Optional[str],  # Can be None
+        samples: List[str],
+        labels: List[int],
+        predictions: List[int],
+        subset_indices: List[int],
+        output_json: str, 
+        threshold_real: float,
+        threshold_random: float
+    ):
+        """
+        Read SHAP, random SHAP, and LIME pkl files and create the final JSON structure
+        
+        Args:
+            shap_pkl_dir: Directory containing shap_values_*.pkl files
+            shap_random_pkl_dir: Directory containing shap_values_random_*.pkl files
+            lime_pkl_dir: Directory containing lime_values_*.pkl files (can be None)
+            samples: List of sample texts
+            labels: List of true labels
+            predictions: List of predictions
+            subset_indices: List of indices to process
+            output_json: Output JSON file path
+        """
+        data_dict = {}
+        shap_dir = Path(shap_pkl_dir)
+        shap_random_dir = Path(shap_random_pkl_dir)
+        lime_dir = Path(lime_pkl_dir) if lime_pkl_dir else None
+        
+        for idx, sample_idx in enumerate(subset_indices):
+            # Load SHAP explanation (raw)
+            shap_pkl_path = shap_dir / f"shap_values_{sample_idx}.pkl"
+            
+            if not shap_pkl_path.exists():
+                print(f"Warning: SHAP file not found for index {sample_idx}")
+                continue
+            
+            shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
+            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real)
+            
+            # Load SHAP random explanation
+            shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
+            
+            if not shap_random_pkl_path.exists():
+                print(f"Warning: SHAP random file not found for index {sample_idx}")
+                shap_random_formatted = {}
+            else:
+                shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
+                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random)
+            
+            # Load LIME explanation (if available)
+            lime_formatted = {}
+            if lime_dir:
+                lime_pkl_path = lime_dir / f"lime_values_{sample_idx}.pkl"
+                if lime_pkl_path.exists():
+                    lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
+                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
+                else:
+                    print(f"Warning: LIME file not found for index {sample_idx}")
+            
+            # Build the data structure
+            data_dict[int(sample_idx)] = {
+                "sample": str(samples[idx]),
+                "label": int(labels[idx]),
+                "prediction": int(predictions[idx]),
+                "shap": shap_formatted,
+                "shap_random": shap_random_formatted,  # NEW: random SHAP
+                "lime": lime_formatted
+            }
+        
+        # Save to JSON
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(data_dict, f, indent=4, ensure_ascii=False)
+        
+        print(f"Saved {len(data_dict)} samples to {output_json}")
 
 
 def extract_shap_as_text_all(shap_values, threshold=0.01):
