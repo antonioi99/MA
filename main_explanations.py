@@ -63,8 +63,6 @@ def main():
     start = args.start
     end = start + subset_size if args.only_positive else subset_size // 2 + start
 
-    print(f"\n\nGenerating explanations with idx in range {(start)} - {end}")
-
     if args.set == 'train':
         dataset_split = dataset_train
     if args.set == 'dev':
@@ -117,6 +115,8 @@ def main():
 
         import shap
 
+        print(f"\n\nGenerating explanations with idx in range {(start)} - {end}")
+
         def shap_predict(texts):
             return helper_functions_exp.predict_fast(
                 documents=texts, model=model, tokenizer=tokenizer
@@ -139,7 +139,7 @@ def main():
         explainer_shap_random = shap.explainers.other.Random(
             shap_predict,
             masker_shap,
-            algorithm="partition" # see choices at https://shap.readthedocs.io/en/latest/generated/shap.Explainer.html#shap.Explainer
+            algorithm="partition" # see choices at https://shap.readthedocs.io/en/latest/generated/shap.explainers.other.Random.html
             )
         
         folder_raw = f'shap/{args.set}_set/shap_raw'
@@ -168,26 +168,6 @@ def main():
             
             tqdm.write(f"Saved file '{raw_path}'")
             tqdm.write(f"Saved file '{random_path}'")
-    
-
-
-        ####################################
-        # CONVERT EXPLANATIONS IN NLP FORMAT
-        ####################################
-        
-        # data = {}
-        # for idx in range(subset_size):
-        #     with open(f'shap/shap_raw/shap_values_{idx}.pkl', 'rb') as f:
-        #         shap_values = pickle.load(f)
-            
-        #     data[str(idx)] = {
-        #         'formatted_text': helper_functions_exp.extract_shap_as_text_all(shap_values)[0],
-        #         'structured_text': helper_functions_exp.extract_shap_as_structured_text_all(shap_values)[0],
-        #         'top_words': helper_functions_exp.extract_top_words_with_scores_all(shap_values)[0]
-        #     }
-
-        # with open('shap/shap_converted.json', 'w', encoding='utf-8') as f:
-        #     json.dump(data, f, indent=4, ensure_ascii=False)
 
 
     if args.exp == 'lime':
@@ -212,40 +192,31 @@ def main():
                 explanations_lime.append(explanation)
 
 
+
     if args.exp == 'formatter':
 
-        shap_formatter = helper_functions_exp.ExplanationFormatter()
-        lime_formatter = helper_functions_exp.ExplanationFormatter()
+        formatter = helper_functions_exp.ExplanationFormatter()
+        processor = helper_functions_exp.ExplanationProcessor(formatter)
 
-        # Load explanations
-        shap_formatter.load_explanations(shap_values, 'shap')
-        lime_formatter.load_explanations(explanations_lime, 'lime')
 
-        formatted_text_LIME = lime_formatter.extract_as_text_all(threshold=0.01)
-        structured_text_LIME = lime_formatter.extract_as_structured_text_all(threshold=0.01)
-        top_words_LIME = lime_formatter.extract_top_words_with_scores_all()
+        folder_explanations_converted = f'explanations4NLP/{args.set}_set'
+        file_explanations_def = os.path.join(folder_explanations_converted, f'explanations_{start}_{end}.json')
+        os.makedirs(folder_explanations_converted, exist_ok=True)
+        
+        # Process and save
+        processor.process_explanations_from_files(
+            shap_pkl_dir=f"shap/{args.set}_set/shap_raw",
+            shap_random_pkl_dir=f"shap/{args.set}_set/shap_random",
+            lime_pkl_dir=None,  # or None if no LIME
+            samples=subset_texts,
+            labels=subset_labels,
+            predictions=predicted_labels, #to be modified
+            subset_indices=subset_indices,
+            output_json=file_explanations_def,
+            threshold_real=0.01,
+            threshold_random=0.001
+        )
 
-        data = {}
-
-        for idx in range(len(formatted_text_LIME)):
-            data[idx + 15] = {
-                'formatted_text': formatted_text_LIME[idx],
-                'structured_text': structured_text_LIME[idx],
-                'top_words': top_words_LIME[idx]
-            }
-
-        with open('lime.json', "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-        # save_dict_with_explanations(filename='datadata.json',
-        #                             samples=sample_texts,
-        #                             labels=labels_subset,
-        #                             predictions=predicted_labels,
-        #                             shap=shap_exp,
-        #                             lime=lime_exp,
-        #                             type_of_explanations=exp_types,
-        #                             subset_indices=sorted(subset_indices)
-        #                             )
 
 if __name__ == '__main__':
     main()
