@@ -7,13 +7,13 @@ def main():
     # Load test set from IMDB
     print("Loading test set from IMDB...")
     dataset_test = load_dataset("imdb", split="test")
-    dataset_test = concatenate_datasets([
-        dataset_test.select(range(7500, 7510)),
-        dataset_test.select(range(12500, 12510))
-    ])
+    dataset_test = dataset_test.select(range(7500, 17500))
 
 
     test_texts = dataset_test['text']
+
+    test_texts = list(test_texts)
+    test_ids = list(range(len(test_texts))) 
 
     json_path = "explanations4NLP/explanations_0_150.json"
     folder_similarity_groups = 'similarity_groups'
@@ -23,6 +23,7 @@ def main():
     groups = create_similarity_groups_from_data(json_file_path=json_path, 
                                                 output_json_path=output_path, 
                                                 test_texts=test_texts, 
+                                                test_ids=test_ids,
                                                 max_features=5000)
 
 

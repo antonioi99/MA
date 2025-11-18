@@ -14,7 +14,7 @@ import torch
 import os
 
 
-def create_similarity_groups_from_data(json_file_path, output_json_path, test_texts, max_features=5000):
+def create_similarity_groups_from_data(json_file_path, output_json_path, test_texts, test_ids, max_features=5000):
     """
     Create similarity groups using test set from IMDB and dev set from JSON file.
     
@@ -31,8 +31,8 @@ def create_similarity_groups_from_data(json_file_path, output_json_path, test_te
             "dev_predictions": [list of corresponding dev predictions]
         }
     """
-    test_texts = list(test_texts)
-    test_ids = list(range(len(test_texts)))  # Just use indices as IDs
+    # test_texts = list(test_texts)
+    # test_ids = list(range(len(test_texts)))  # Just use indices as IDs
     
     print(f"Test set size: {len(test_texts)}")
     
