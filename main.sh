@@ -14,4 +14,4 @@
 
 python3 --version
 df -h
-python main_explanations.py --exp shap --start 845 --subset_size 5 --set dev --only_positive
+python main_explanations.py --exp shap --start 2147 --subset_size 3 --set dev --only_positive True
