@@ -5,13 +5,14 @@
 #SBATCH --container-mount-home 
 #SBATCH --mem=40G
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
+# #SBATCH --gres=gpu:1
 #SBATCH --time=0-7:59:00
 #SBATCH --container-workdir=/srv/home/users/a12225670cs/MA
 #SBATCH --nodes=1
-#SBATCH --partition=p_csunivie_gres
+# #SBATCH --partition=p_csunivie_gres
+#SBATCH --partition=p_csunivie
 #SBATCH --requeue
 
 python3 --version
 df -h
-python main_explanations.py --exp shap --start 2147 --subset_size 3 --set dev --only_positive True
+python main_similarity.py --type group

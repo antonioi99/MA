@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name="shap_explanations"
-#SBATCH --array=0-15%3
+#SBATCH --array=16-30%3
 #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
 #SBATCH --nodelist=dgx1
 #SBATCH --container-mount-home 
@@ -19,4 +19,4 @@ ACTUAL_TASK_ID=$((SLURM_ARRAY_TASK_ID * 200))
 
 python3 --version
 df -h
-python main_explanations.py --exp shap --start ${ACTUAL_TASK_ID} --subset_size 400 --set dev
+python main_explanations.py --exp formatter --start ${ACTUAL_TASK_ID} --subset_size 400 --set dev

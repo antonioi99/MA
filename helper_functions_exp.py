@@ -5,7 +5,7 @@ import json
 import os
 import pickle
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 import numpy as np
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -546,6 +546,42 @@ def extract_top_words_with_scores_all(shap_values, top_n=20):
         results.append("\n".join(result_parts))
 
     return results
+
+def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dict]:
+    """
+    Merge all JSON files in a folder into one dictionary, ordered by integer keys.
+    
+    Args:
+        folder_path: Path to folder containing JSON files
+        
+    Returns:
+        Dictionary with integer keys in ascending order
+    """
+    folder = Path(folder_path)
+    merged_data = {}
+    
+    # Get all JSON files in the folder
+    json_files = sorted(folder.glob("explanations*"))
+    
+    if not json_files:
+        print(f"Warning: No JSON files found in {folder_path}")
+        return merged_data
+    
+    print(f"Found {len(json_files)} JSON files")
+    
+    # Load and merge all JSON files
+    for file_path in json_files:
+        print(f"Loading {file_path.name}...")
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            merged_data.update(data)
+    
+    sorted_data = dict(sorted(
+        merged_data.items(),
+        key=lambda x: int(x[0])
+    ))
+    
+    return sorted_data
 
 
 def lime_explainer(model, tokenizer):
