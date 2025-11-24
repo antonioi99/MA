@@ -15,12 +15,16 @@ def main():
 
     args = parser.parse_args()
 
+    folder_merged = "explanations4NLP/merged_data"
+    os.makedirs(folder_merged, exist_ok=True)
+    merged_data = os.path.join(folder_merged, 'merged_data.json')
+
     if args.type == 'merge':
 
         # Merge all JSON files from a folder
         merged = merge_json_files_from_folder("explanations4NLP")
         
-        with open("explanations4NLP/merged_data.json", 'w') as f:
+        with open(merged_data, 'w') as f:
             json.dump(merged, f, indent=2)
         
         print(f"Merged {len(merged)} samples")
@@ -39,12 +43,11 @@ def main():
         test_texts = list(test_texts)
         test_ids = list(range(len(test_texts))) 
 
-        json_path = "explanations4NLP/merged_data.json"
         folder_similarity_groups = 'similarity_groups'
         os.makedirs(folder_similarity_groups, exist_ok=True)
         output_path = os.path.join(folder_similarity_groups, "similarity_groups.json")
 
-        groups = create_similarity_groups_from_data(json_file_path=json_path, 
+        groups = create_similarity_groups_from_data(json_file_path=merged_data, 
                                                     output_json_path=output_path, 
                                                     test_texts=test_texts, 
                                                     test_ids=test_ids,
