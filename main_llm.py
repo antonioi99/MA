@@ -4,11 +4,14 @@ import argparse
 
 def main():
     
-    # parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     # parser.add_argument("--explanations", 
     #                     type=bool,  
     #                     required=True)
-    # args = parser.parse_args()
+    parser.add_argument("--data_size",
+                        type=int,
+                        required=True)
+    args = parser.parse_args()
 
 
     # Test WITHOUT explanations
@@ -22,7 +25,7 @@ def main():
     results_baseline = helper_model.test_experiment(
         groups_file=groups_file,
         dev_data_file=dev_data_file,
-        num_test_instances=20,
+        num_test_instances=args.data_size,
         use_explanations=False,
         output_file="test_results_baseline.json"
     )
@@ -37,7 +40,7 @@ def main():
     results_with_exp = helper_model.test_experiment(
         groups_file=groups_file,
         dev_data_file=dev_data_file,
-        num_test_instances=20,
+        num_test_instances=args.data_size,
         use_explanations=True,
         explanation_format="text_labels",
         output_file="test_results_with_explanations.json"
