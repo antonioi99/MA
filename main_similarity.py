@@ -1,7 +1,6 @@
 from datasets import load_dataset, concatenate_datasets
-from helper_functions import create_similarity_groups_from_data
+from helper_functions import create_similarity_groups_from_data, merge_json_files_from_folder
 import argparse
-from helper_functions_exp import merge_json_files_from_folder
 import os
 import json
 
@@ -47,7 +46,10 @@ def main():
         os.makedirs(folder_similarity_groups, exist_ok=True)
         output_path = os.path.join(folder_similarity_groups, "similarity_groups.json")
 
-        groups = create_similarity_groups_from_data(json_file_path=merged_data, 
+        predictions_json = 'classification_model_predictions/dev_set/predictions.json'
+
+        groups = create_similarity_groups_from_data(json_file_path=merged_data,
+                                                    predictions_json=predictions_json,
                                                     output_json_path=output_path, 
                                                     test_texts=test_texts, 
                                                     test_ids=test_ids,

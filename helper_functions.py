@@ -1,25 +1,548 @@
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional, Union
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from dataclasses import dataclass
-from typing import Dict, List, Any
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from datetime import datetime
 from tqdm import tqdm
-from datasets import load_dataset, concatenate_datasets
 import numpy as np
+import torch
+import gc
+import os
+import pickle
 import random
 import json
-import random
-import torch
-import os
 
 
-def create_similarity_groups_from_data(json_file_path, output_json_path, test_texts, test_ids, max_features=5000):
+def predict_fast(documents, model, tokenizer, batch_size=64):
+
+    documents = [str(d) for d in documents]
+    all_probs = []
+
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i:i + batch_size]
+        inputs = tokenizer(batch, padding=True, truncation=True, 
+                          max_length=512, return_tensors="pt").to(model.device)
+        
+        with torch.no_grad():
+            probs = torch.nn.functional.softmax(model(**inputs).logits, dim=-1)
+            all_probs.append(probs.cpu().numpy())
+
+    return np.concatenate(all_probs, axis=0)
+
+
+class ExplanationFormatter:
+    """
+    Unified formatter for both SHAP and LIME explanations
+    Provides consistent formatting methods for both explanation types
+    """
+
+    def __init__(self):
+        self.explanation_type = None
+        self.processed_data = []
+
+    def _extract_lime_data(self, lime_explanations: List) -> List[Tuple[List[str], List[float]]]:
+        """
+        Extract words and scores from LIME explanations
+        """
+        extracted_data = []
+
+        for explanation in lime_explanations:
+            # Get the list of available class labels (e.g., [0, 1])
+            labels = explanation.available_labels()
+
+            # Pick the first one (usually predicted class)
+            exp_list = explanation.as_list(label=labels[0])
+            lime_scores = dict(exp_list)
+
+            # Get original raw string (call the function) and tokenize
+            raw_text = explanation.domain_mapper.indexed_string.raw_string()
+            word_list = raw_text.split()
+
+            # Map scores to words
+            score_list = [lime_scores.get(word, 0.0) for word in word_list]
+
+            extracted_data.append((word_list, score_list))
+
+        return extracted_data
+
+
+
+
+    def _extract_shap_data(self, shap_values) -> List[Tuple[List[str], List[float]]]:
+        """
+        Extract words and scores from SHAP explanations
+        """
+        extracted_data = []
+
+        for i in range(len(shap_values.data)):
+            words = list(shap_values.data[i])
+            scores = shap_values.values[i]
+
+            if len(scores.shape) > 1:
+                scores = scores[:, 1]  # take contribution for class 1
+
+            extracted_data.append((words, list(scores)))
+
+        return extracted_data
+
+    def load_explanations(self, explanations, explanation_type: str):
+        """
+        Load explanations and prepare them for formatting
+        """
+        self.explanation_type = explanation_type.lower()
+
+        if self.explanation_type == 'shap':
+            self.processed_data = self._extract_shap_data(explanations)
+        elif self.explanation_type == 'lime':
+            self.processed_data = self._extract_lime_data(explanations)
+        else:
+            raise ValueError("explanation_type must be 'shap' or 'lime'")
+
+    def extract_as_text_scores(self, threshold: float) -> List[str]:
+        """
+        Format explanations as text with inline scores
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            result_parts = []
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    result_parts.append(word)
+                else:
+                    sign = "+" if score >= 0 else ""
+                    result_parts.append(f"{word}[{sign}{score:.3f}]")
+
+            results.append(" ".join(result_parts))
+
+        return results
+
+    def extract_as_structured_text_scores(self, threshold: float) -> List[str]:
+        """
+        Format explanations as structured text with positive/negative sections
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            positive_words = []
+            negative_words = []
+            neutral_words = []
+
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    neutral_words.append(word)
+                elif score > 0:
+                    positive_words.append(f"{word}[+{score:.3f}]")
+                else:
+                    negative_words.append(f"{word}[{score:.3f}]")
+
+            result_parts = []
+            if positive_words:
+                result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
+            if negative_words:
+                result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
+            if neutral_words:
+                result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
+
+            results.append("\n".join(result_parts))
+
+        return results
+
+    def extract_top_words_scores(self, top_n: int = 20) -> List[str]:
+        """
+        Extract top N most influential words with their scores
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            word_scores = list(zip(words, scores))
+            word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            top_words = word_scores[:top_n]
+            result_parts = []
+            for word, score in top_words:
+                sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+                result_parts.append(f"{word}: {score:.3f} [{sentiment}]")
+
+            results.append("\n".join(result_parts))
+
+        return results
+    
+    def extract_as_text_labels(self, threshold: float = 0.01) -> List[str]:
+        """
+        Format explanations as text with POSITIVE/NEGATIVE labels instead of scores
+        
+        Example: "This[POSITIVE] is[NEGATIVE] a good[POSITIVE] film[POSITIVE]"
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            result_parts = []
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    result_parts.append(word)
+                else:
+                    label = "POSITIVE" if score >= 0 else "NEGATIVE"
+                    result_parts.append(f"{word}[{label}]")
+
+            results.append(" ".join(result_parts))
+
+        return results
+
+
+    def extract_as_structured_text_labels(self, threshold: float = 0.01) -> List[str]:
+        """
+        Format explanations as structured text with positive/negative sections but WITHOUT scores
+        
+        Example:
+        POSITIVE SENTIMENT: This good film very funny
+        NEGATIVE SENTIMENT: is after no Ernest !
+        NEUTRAL: . Yet
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            positive_words = []
+            negative_words = []
+            neutral_words = []
+
+            for word, score in zip(words, scores):
+                if abs(score) < threshold:
+                    neutral_words.append(word)
+                elif score > 0:
+                    positive_words.append(word)
+                else:
+                    negative_words.append(word)
+
+            result_parts = []
+            if positive_words:
+                result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
+            if negative_words:
+                result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
+            if neutral_words:
+                result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
+
+            results.append("\n".join(result_parts))
+
+        return results
+
+
+    def extract_top_words_labels(self, top_n: int = 20) -> List[str]:
+        """
+        Extract top N most influential words with POSITIVE/NEGATIVE labels (no scores)
+        
+        Example:
+        !: NEGATIVE
+        good: POSITIVE
+        no: NEGATIVE
+        funny: POSITIVE
+        """
+        results = []
+
+        for words, scores in self.processed_data:
+            word_scores = list(zip(words, scores))
+            word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            top_words = word_scores[:top_n]
+            result_parts = []
+            for word, score in top_words:
+                sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+                result_parts.append(f"{word}: {sentiment}")
+
+            results.append("\n".join(result_parts))
+
+        return results
+    
+class ExplanationProcessor:
+    """
+    Processes SHAP/LIME explanations from pkl files and converts them to JSON format
+    """
+    
+    def __init__(self, formatter: ExplanationFormatter):
+        self.formatter = formatter
+        self.explanation_types = ['text', 'structured_text', 'top_words']
+    
+    def load_explanation_from_pkl(self, pkl_path: str):
+        """Load a single explanation from a pkl file"""
+        with open(pkl_path, 'rb') as f:
+            return pickle.load(f)
+    
+    def process_single_explanation(self, explanation, explanation_type: str, threshold: float) -> Dict[str, str]:
+        """
+        Process a single explanation and return all formatted versions
+        
+        Returns:
+            dict with keys: 'text', 'structured_text', 'top_words'
+        """
+        # Load explanation into formatter
+        self.formatter.load_explanations(explanation, explanation_type)
+        
+        # Generate all formats
+        formatted = {
+            'text_scores': self.formatter.extract_as_text_scores(threshold)[0],
+            'text_labels': self.formatter.extract_as_text_labels(threshold=threshold)[0],
+
+            'structured_text_scores': self.formatter.extract_as_structured_text_scores(threshold)[0],
+            'structured_text_labels': self.formatter.extract_as_structured_text_labels(threshold=threshold)[0],
+
+            'top_words_scores': self.formatter.extract_top_words_scores(top_n=20)[0],
+            'top_words_labels': self.formatter.extract_top_words_labels(top_n=20)[0]
+            
+        }
+        
+        return formatted
+    
+    def process_explanations_from_files(
+        self,
+        shap_pkl_dir: str,
+        shap_random_pkl_dir: str,  #for random SHAP
+        lime_pkl_dir: Optional[str],  # Can be None
+        samples: List[str],
+        labels: List[int],
+        subset_indices: List[int],
+        output_json: str, 
+        threshold_real: float,
+        threshold_random: float
+    ):
+        """
+        Read SHAP, random SHAP, and LIME pkl files and create the final JSON structure
+        
+        Args:
+            shap_pkl_dir: Directory containing shap_values_*.pkl files
+            shap_random_pkl_dir: Directory containing shap_values_random_*.pkl files
+            lime_pkl_dir: Directory containing lime_values_*.pkl files (can be None)
+            samples: List of sample texts
+            labels: List of true labels
+            subset_indices: List of indices to process
+            output_json: Output JSON file path
+        """
+        data_dict = {}
+        shap_dir = Path(shap_pkl_dir)
+        shap_random_dir = Path(shap_random_pkl_dir)
+        lime_dir = Path(lime_pkl_dir) if lime_pkl_dir else None
+        
+        for idx, sample_idx in enumerate(subset_indices):
+            # Load SHAP explanation (raw)
+            shap_pkl_path = shap_dir / f"shap_values_{sample_idx}.pkl"
+            
+            if not shap_pkl_path.exists():
+                print(f"Warning: SHAP file not found for index {sample_idx}")
+                continue
+            
+            shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
+            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real)
+            
+            # Load SHAP random explanation
+            shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
+            
+            if not shap_random_pkl_path.exists():
+                print(f"Warning: SHAP random file not found for index {sample_idx}")
+                shap_random_formatted = {}
+            else:
+                shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
+                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random)
+            
+            # Load LIME explanation (if available)
+            lime_formatted = {}
+            if lime_dir:
+                lime_pkl_path = lime_dir / f"lime_values_{sample_idx}.pkl"
+                if lime_pkl_path.exists():
+                    lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
+                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
+                else:
+                    print(f"Warning: LIME file not found for index {sample_idx}")
+            
+            # Build the data structure
+            data_dict[int(sample_idx)] = {
+                "sample": str(samples[idx]),
+                "label": int(labels[idx]),
+                "shap": shap_formatted,
+                "shap_random": shap_random_formatted,
+                "lime": lime_formatted
+            }
+        
+        # Save to JSON
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(data_dict, f, indent=4, ensure_ascii=False)
+        
+        print(f"Saved {len(data_dict)} samples to {output_json}")
+
+
+def extract_shap_as_text_all(shap_values, threshold=0.01):
+    """Process all samples and return list of formatted texts"""
+    results = []
+    for i in range(len(shap_values.data)):
+        data = shap_values.data[i]
+        values = shap_values.values[i]
+
+        if len(values.shape) > 1:
+            values = values[:, 1]
+
+        result_parts = []
+        for word, value in zip(data, values):
+            if abs(value) < threshold:
+                result_parts.append(word)
+            else:
+                sign = "+" if value >= 0 else ""
+                result_parts.append(f"{word}[{sign}{value:.3f}]")
+
+        results.append(" ".join(result_parts))
+
+    return results
+
+
+def extract_shap_as_structured_text_all(shap_values, threshold=0.01):
+    """
+    Extract SHAP explanations as structured text with clear positive/negative sections for all samples
+
+    Args:
+        shap_values: SHAP values object from explainer
+        threshold: Minimum absolute SHAP value to include
+
+    Returns:
+        list: List of structured text strings with positive and negative contributions
+    """
+    results = []
+
+    for i in range(len(shap_values.data)):
+        data = shap_values.data[i]
+        values = shap_values.values[i]
+
+        # Handle multi-output case
+        if len(values.shape) > 1:
+            values = values[:, 1]  # Use positive class
+
+        positive_words = []
+        negative_words = []
+        neutral_words = []
+
+        for word, value in zip(data, values):
+            if abs(value) < threshold:
+                neutral_words.append(word)
+            elif value > 0:
+                positive_words.append(f"{word}(+{value:.3f})")
+            else:
+                negative_words.append(f"{word}({value:.3f})")
+
+        result = []
+        if positive_words:
+            result.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
+        if negative_words:
+            result.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
+        if neutral_words:
+            result.append(f"NEUTRAL: {' '.join(neutral_words)}")
+
+        results.append("\n".join(result))
+
+    return results
+
+
+def extract_top_words_with_scores_all(shap_values, top_n=20):
+    """
+    Extract top N most influential words with their SHAP scores for all samples
+
+    Args:
+        shap_values: SHAP values object from explainer
+        top_n: Number of top words to return per sample
+
+    Returns:
+        list: List of strings with top influential words and scores for each sample
+    """
+    results = []
+
+    for i in range(len(shap_values.data)):
+        data = shap_values.data[i]
+        values = shap_values.values[i]
+
+        # Handle multi-output case
+        if len(values.shape) > 1:
+            values = values[:, 1]
+
+        # Create list of (word, score) tuples and sort by absolute value
+        word_scores = list(zip(data, values))
+        word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
+
+        # Take top N
+        top_words = word_scores[:top_n]
+
+        result_parts = []
+        for word, score in top_words:
+            sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+            result_parts.append(f"{word}: {score:.3f} ({sentiment})")
+
+        results.append("\n".join(result_parts))
+
+    return results
+
+def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dict]:
+    """
+    Merge all JSON files in a folder into one dictionary, ordered by integer keys.
+    
+    Args:
+        folder_path: Path to folder containing JSON files
+        
+    Returns:
+        Dictionary with integer keys in ascending order
+    """
+    folder = Path(folder_path)
+    merged_data = {}
+    
+    # Get all JSON files in the folder
+    json_files = sorted(folder.glob("explanations*"))
+    
+    if not json_files:
+        print(f"Warning: No JSON files found in {folder_path}")
+        return merged_data
+    
+    print(f"Found {len(json_files)} JSON files")
+    
+    # Load and merge all JSON files
+    for file_path in json_files:
+        print(f"Loading {file_path.name}...")
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            merged_data.update(data)
+    
+    sorted_data = dict(sorted(
+        merged_data.items(),
+        key=lambda x: int(x[0])
+    ))
+    
+    return sorted_data
+
+
+def lime_explainer(model, tokenizer):
+    """
+    LIME explainer that works directly with the LLaMA model
+    """
+
+    from lime import lime_text
+    from lime.lime_text import LimeTextExplainer
+
+    def predict_probs(list_of_texts):
+        """
+        Wrapper function that takes a list of text strings and returns probabilities
+        """
+        # Handle single string input
+
+        probabilities = predict_with_memory_management(list_of_texts)  # already existing function
+
+        return probabilities
+
+    # Create LIME text explainer
+    explainer = lime_text.LimeTextExplainer(
+        class_names=['Negative', 'Positive'],
+    )
+
+    return explainer, predict_probs
+
+
+def create_similarity_groups_from_data(json_file_path, predictions_json, output_json_path, test_texts, test_ids, max_features=5000):
     """
     Create similarity groups using test set from IMDB and dev set from JSON file.
     
     Args:
-        json_file_path: Path to JSON file containing dev set with predictions
+        json_file_path: Path to JSON file containing dev set texts
+        predictions_json: Path to JSON file containing dev_set_predictions
         output_json_path: Path to save the output JSON file
         test_texts: texts form the test set
         max_features: Maximum features for TF-IDF vectorizer
@@ -31,8 +554,6 @@ def create_similarity_groups_from_data(json_file_path, output_json_path, test_te
             "dev_predictions": [list of corresponding dev predictions]
         }
     """
-    # test_texts = list(test_texts)
-    # test_ids = list(range(len(test_texts)))  # Just use indices as IDs
     
     print(f"Test set size: {len(test_texts)}")
     
@@ -40,6 +561,9 @@ def create_similarity_groups_from_data(json_file_path, output_json_path, test_te
     print(f"Loading dev set from {json_file_path}...")
     with open(json_file_path, 'r', encoding='utf-8') as f:
         dev_data = json.load(f)
+    
+    with open(predictions_json, 'r', encoding='utf-8') as f:
+        data_predictions = json.load(f)
     
     # Extract dev information
     dev_ids = []
@@ -49,6 +573,7 @@ def create_similarity_groups_from_data(json_file_path, output_json_path, test_te
     for sample_idx, data in dev_data.items():
         dev_ids.append(int(sample_idx))
         dev_texts.append(data['sample'])
+    for sample_idx, data in data_predictions.items():
         dev_predictions.append(data['prediction'])
     
     print(f"Dev set size: {len(dev_texts)}")
@@ -127,749 +652,3 @@ def create_similarity_groups_from_data(json_file_path, output_json_path, test_te
     print(f"\nCompleted! Created groups for {len(result_dict)} test instances")
     print(f"Results saved to {output_json_path}")
     return result_dict
-
-
-
-@dataclass
-class SampleData:
-    """Structure to hold individual sample data"""
-    sample_id: str
-    review_text: str
-    true_label: int
-    model_prediction: int
-    shap_formatted: str
-    lime_formatted: str
-
-class DataLoader:
-    """Handles loading and splitting the dataset"""
-
-    def __init__(self, json_file_path: str, similarity_groups: list = None):
-        self.json_file_path = json_file_path
-        self.similarity_groups = similarity_groups
-        self.all_samples = []
-        self.index_to_sample = {}  # Map original indices to samples
-        self.learn_group = []
-        self.test_group = []
-        self.learn_group_batches = []
-        self.test_group_batches = []
-
-    def load_data(self) -> None:
-        """Load data from JSON file and parse into SampleData objects"""
-        with open(self.json_file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        for sample_id, sample_info in data.items():
-            sample_data = SampleData(
-                sample_id=sample_id,
-                review_text=sample_info['sample'],
-                true_label=sample_info['label'],
-                model_prediction=sample_info['prediction'],
-                shap_formatted=sample_info['shap']['formatted_text'],
-                lime_formatted=sample_info['lime']['formatted_text']
-            )
-            self.all_samples.append(sample_data)
-
-    def load_data_with_groups(self, texts: List[str], labels: List[int]) -> None:
-        """Load data directly from texts and labels (for use with similarity groups)"""
-        for idx, (text, label) in enumerate(zip(texts, labels)):
-            sample_data = SampleData(
-                sample_id=f"sample_{idx}",
-                review_text=text,
-                true_label=label,
-                model_prediction=label,  # Assuming prediction matches label for now
-                shap_formatted="",  # Will be empty for now
-                lime_formatted=""   # Will be empty for now
-            )
-            self.all_samples.append(sample_data)
-            self.index_to_sample[idx] = sample_data
-
-    def split_data_with_groups(self, num_train_groups: int = 16, num_test_groups: int = 16, seed: int = 42) -> None:
-        """Split data into Group A (training) and Group B (testing) using similarity groups"""
-        if self.similarity_groups is None:
-            raise ValueError("No similarity groups provided.")
-
-        total_groups_needed = num_train_groups + num_test_groups
-        if len(self.similarity_groups) < total_groups_needed:
-            raise ValueError(f"Not enough groups. Need {total_groups_needed}, have {len(self.similarity_groups)}")
-
-        # Set seed for reproducible splits
-        random.seed(seed)
-
-        # Shuffle groups
-        shuffled_groups = random.sample(self.similarity_groups, len(self.similarity_groups))
-
-        # Split groups into train and test
-        train_groups = shuffled_groups[:num_train_groups]
-        test_groups = shuffled_groups[num_train_groups:num_train_groups + num_test_groups]
-
-        # Convert group indices to actual samples
-        self.learn_group_batches = []
-        for group in train_groups:
-            group_indices = group['indices']
-            group_indices = random.sample(group_indices, len(group_indices))  # Shuffle indices
-            batch = [self.index_to_sample[idx] for idx in group_indices]
-            self.learn_group_batches.append(batch)
-            self.learn_group.extend(batch)
-
-        self.test_group_batches = []
-        for group in test_groups:
-            group_indices = group['indices']
-            group_indices = random.sample(group_indices, len(group_indices))  # Shuffle indices
-            batch = [self.index_to_sample[idx] for idx in group_indices]
-            self.test_group_batches.append(batch)
-            self.test_group.extend(batch)
-
-        print(f"Group A: {len(self.learn_group)} samples → {len(self.learn_group_batches)} batches of 4")
-        print(f"Group B: {len(self.test_group)} samples → {len(self.test_group_batches)} batches of 4")
-        print(f"Total samples used: {len(self.learn_group) + len(self.test_group)} out of {len(self.all_samples)}")
-
-    def _create_batches(self, samples: List[SampleData], batch_size: int) -> List[List[SampleData]]:
-        """Split samples into batches"""
-        batches = []
-        for i in range(0, len(samples), batch_size):
-            batch = samples[i:i + batch_size]
-            batches.append(batch)
-        return batches
-
-    def get_num_batches(self) -> int:
-        """Get number of batches"""
-        return len(self.learn_group_batches)
-    
-class PhaseManager:
-    """Manages the four phases of the model simulation experiment with batching"""
-
-    def __init__(self, data_loader: DataLoader):
-        self.data_loader = data_loader
-        self.num_batches = data_loader.get_num_batches()
-
-        # Store predictions per batch
-        self.phase2_predictions = {}
-        self.phase4_predictions = {}
-
-    def get_phase1_intro(self) -> str:
-        """Phase 1: Introduction"""
-        return (
-            "Your task: Learn how a sentiment analysis model works by studying its predictions.\n\n"
-            "The model predicts:\n"
-            "0 = Negative sentiment\n"
-            "1 = Positive sentiment\n\n"
-            "I will show you 4 examples. Study them carefully."
-        )
-
-    def get_phase1_examples(self, batch_idx: int) -> str:
-        """Phase 1: Get examples for a specific batch as single message"""
-        batch = self.data_loader.learn_group_batches[batch_idx]
-        examples = []
-
-        for i, sample in enumerate(batch, 1):
-            example = (
-                f"Example {i}:\n"
-                f"Review: {sample.review_text}\n"
-                f"Model's Prediction: {sample.model_prediction}"
-            )
-            examples.append(example)
-
-        # Return all examples as one message
-        return "\n\n".join(examples)
-
-    def get_phase2_intro(self) -> str:
-        """Phase 2: Introduction for predictions"""
-        return (
-            "Now you will see 4 new reviews one at a time. "
-            "For each review, predict what the model would output. "
-            "Reply with only 0 or 1."
-        )
-
-    def get_phase2_reviews(self, batch_idx: int) -> List[str]:
-        """Phase 2: Get reviews for prediction"""
-        batch = self.data_loader.test_group_batches[batch_idx]
-        return [sample.review_text for sample in batch]
-
-    def get_phase3_intro(self) -> str:
-        """Phase 3: Introduction"""
-        return (
-            "Now I'll show you 4 examples with explanations of how the model works.\n\n"
-            "The explanation shows each word's influence:\n"
-            "- Positive numbers (e.g., [+0.019]) push toward predicting 1 (positive)\n"
-            "- Negative numbers (e.g., [-0.046]) push toward predicting 0 (negative)\n"
-            "- Larger absolute values = stronger influence\n\n"
-            "Study how the model uses different words."
-        )
-
-    def get_phase3_examples(self, batch_idx: int) -> str:
-        """Phase 3: Get examples with explanations for a specific batch"""
-        batch = self.data_loader.learn_group_batches[batch_idx]
-        examples = []
-
-        for i, sample in enumerate(batch, 1):
-            example = (
-                f"Example {i}:\n"
-                f"Review: {sample.review_text}\n"
-                f"Model's Prediction: {sample.model_prediction}\n"
-                f"Explanation: {sample.shap_formatted}"
-            )
-            examples.append(example)
-
-        # Return all examples as one message
-        return "\n\n".join(examples)
-
-    def get_phase4_intro(self) -> str:
-        """Phase 4: Introduction"""
-        return (
-            "Now predict again for the same 4 reviews. "
-            "Use what you learned from the explanations. "
-            "Having seen the explanations, you have the possibility to change your predictions. "
-            "Reply with only 0 (negative) or 1 (positive)."
-        )
-
-    def get_phase4_reviews(self, batch_idx: int) -> List[str]:
-        """Phase 4: Get reviews (same as Phase 2)"""
-        return self.get_phase2_reviews(batch_idx)
-
-    def store_phase2_predictions(self, batch_idx: int, predictions: List[int]) -> None:
-        """Store Phase 2 predictions for a batch"""
-        expected = len(self.data_loader.test_group_batches[batch_idx])
-        if len(predictions) != expected:
-            raise ValueError(f"Batch {batch_idx}: Expected {expected} predictions, got {len(predictions)}")
-        self.phase2_predictions[batch_idx] = predictions
-        print(f"Stored {len(predictions)} Phase 2 predictions for batch {batch_idx}")
-
-    def store_phase4_predictions(self, batch_idx: int, predictions: List[int]) -> None:
-        """Store Phase 4 predictions for a batch"""
-        expected = len(self.data_loader.test_group_batches[batch_idx])
-        if len(predictions) != expected:
-            raise ValueError(f"Batch {batch_idx}: Expected {expected} predictions, got {len(predictions)}")
-        self.phase4_predictions[batch_idx] = predictions
-        print(f"Stored {len(predictions)} Phase 4 predictions for batch {batch_idx}")
-
-    def get_prediction_comparison(self) -> Dict[str, Any]:
-        """Analyze results across all batches"""
-        if not self.phase2_predictions or not self.phase4_predictions:
-            return {"error": "Missing predictions from one or both phases"}
-
-        # Aggregate all predictions
-        all_phase2_preds = []
-        all_phase4_preds = []
-        all_true_labels = []
-
-        for batch_idx in range(self.num_batches):
-            batch = self.data_loader.test_group_batches[batch_idx]
-            true_labels = [sample.model_prediction for sample in batch]
-
-            all_phase2_preds.extend(self.phase2_predictions[batch_idx])
-            all_phase4_preds.extend(self.phase4_predictions[batch_idx])
-            all_true_labels.extend(true_labels)
-
-        # Calculate overall accuracy
-        phase2_correct = sum(p == t for p, t in zip(all_phase2_preds, all_true_labels))
-        phase4_correct = sum(p == t for p, t in zip(all_phase4_preds, all_true_labels))
-        total = len(all_true_labels)
-
-        # Per-batch analysis
-        batch_results = []
-        for batch_idx in range(self.num_batches):
-            batch = self.data_loader.test_group_batches[batch_idx]
-            true_labels = [sample.model_prediction for sample in batch]
-            p2_preds = self.phase2_predictions[batch_idx]
-            p4_preds = self.phase4_predictions[batch_idx]
-
-            batch_p2_correct = sum(p == t for p, t in zip(p2_preds, true_labels))
-            batch_p4_correct = sum(p == t for p, t in zip(p4_preds, true_labels))
-
-            batch_results.append({
-                "batch_idx": batch_idx,
-                "phase2_accuracy": batch_p2_correct / len(true_labels),
-                "phase4_accuracy": batch_p4_correct / len(true_labels),
-                "improvement": (batch_p4_correct - batch_p2_correct) / len(true_labels)
-            })
-
-        return {
-            "overall": {
-                "phase2_accuracy": phase2_correct / total,
-                "phase4_accuracy": phase4_correct / total,
-                "improvement": (phase4_correct - phase2_correct) / total,
-                "phase2_correct": phase2_correct,
-                "phase4_correct": phase4_correct,
-                "total_samples": total,
-                "predictions_changed": sum(1 for p2, p4 in zip(all_phase2_preds, all_phase4_preds) if p2 != p4)
-            },
-            "per_batch": batch_results
-        }
-    
-class LLMClient:
-    """Handles interaction with the Prometheus model"""
-
-    def __init__(self, model_name: str):
-        self.model_name = model_name
-        self.tokenizer = None
-        self.model = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        # Store conversation as list of messages
-        self.conversation_messages = []
-        self.system_message = None
-
-        # Token IDs for "0" and "1" (set after loading tokenizer)
-        self.token_0_id = None
-        self.token_1_id = None
-
-        self._load_model()
-        self._setup_prediction_tokens()
-
-    def _load_model(self):
-        """Load tokenizer and model"""
-        print(f"Loading {self.model_name}...")
-
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-        )
-
-        # Set pad token if not set
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        print(f"Model loaded on device: {self.device}")
-        print(f"Model memory footprint: {self.model.get_memory_footprint() / 1e9:.2f} GB")
-
-    def _setup_prediction_tokens(self):
-        """Get token IDs for '0' and '1'"""
-        # Try different encodings to find the single-token versions
-        for test_str in ["0", " 0", "0 "]:
-            tokens = self.tokenizer.encode(test_str, add_special_tokens=False)
-            if len(tokens) == 1:
-                self.token_0_id = tokens[0]
-                break
-
-        for test_str in ["1", " 1", "1 "]:
-            tokens = self.tokenizer.encode(test_str, add_special_tokens=False)
-            if len(tokens) == 1:
-                self.token_1_id = tokens[0]
-                break
-
-        if self.token_0_id is None or self.token_1_id is None:
-            raise ValueError("Could not find single-token IDs for '0' and '1'")
-
-        print(f"Token IDs - 0: {self.token_0_id}, 1: {self.token_1_id}")
-
-    def set_system_message(self, system_message: str):
-        """Set the system message for the conversation"""
-        self.system_message = system_message
-        self.conversation_messages = []
-
-    def _build_prompt(self, user_message: str) -> str:
-        """Build prompt using Qwen format"""
-
-        prompt = ""
-
-        if self.system_message is not None:
-          prompt += f"<|im_start|>system\n{self.system_message}<|im_end|>\n"
-
-        # Add conversation history
-        for msg in self.conversation_messages:
-            if msg["role"] == "user":
-                prompt += f"<|im_start|>user\n{msg['content']}<|im_end|>\n"
-            elif msg["role"] == "assistant":
-                prompt += f"<|im_start|>assistant\n{msg['content']}<|im_end|>\n"
-
-        # Add current user message
-        prompt += f"<|im_start|>user\n{user_message}<|im_end|>\n"
-        prompt += "<|im_start|>assistant\n"
-
-        return prompt
-
-    def generate_response(self, user_message: str,
-                         max_tokens: int = 1500,
-                         temperature: float = 0.2) -> str:
-        """Generate a regular conversational response"""
-        prompt = self._build_prompt(user_message)
-
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=False,
-            #max_length=4096  # Reduced from 8192
-        ).to(self.model.device)
-
-        input_length = inputs.input_ids.shape[1]
-        print(f"Input length: {input_length} tokens")
-
-        with torch.no_grad():
-            outputs = self.model.generate(
-                inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                top_p=0.9,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id
-            )
-
-        # Decode only new tokens
-        new_tokens = outputs[0][input_length:]
-        response = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-
-        # Add to conversation history
-        self.conversation_messages.append({"role": "user", "content": user_message})
-        self.conversation_messages.append({"role": "assistant", "content": response})
-
-        return response
-
-    def generate_constrained_prediction(self, user_message: str) -> int:
-        """Generate a prediction constrained to only 0 or 1"""
-        prompt = self._build_prompt(user_message)
-
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=True,
-            #max_length=4096
-        ).to(self.model.device)
-
-        input_length = inputs.input_ids.shape[1]
-
-        # Get logits for the next token
-        with torch.no_grad():
-            outputs = self.model(
-                inputs.input_ids,
-                attention_mask=inputs.attention_mask
-            )
-            next_token_logits = outputs.logits[0, -1, :]
-
-        # Only consider logits for "0" and "1" tokens
-        logits_0 = next_token_logits[self.token_0_id].item()
-        logits_1 = next_token_logits[self.token_1_id].item()
-
-        # Choose the one with higher logit
-        prediction = 0 if logits_0 > logits_1 else 1
-
-        # Add to conversation history
-        self.conversation_messages.append({"role": "user", "content": user_message})
-        self.conversation_messages.append({"role": "assistant", "content": str(prediction)})
-
-        return prediction
-
-    def generate_predictions_for_reviews(self, reviews: List[str],
-                                        phase_intro: str) -> List[int]:
-        """Generate predictions for multiple reviews"""
-        predictions = []
-
-        # Send phase introduction
-        print("Sending phase introduction...")
-        self.generate_response(phase_intro, max_tokens=100)
-
-        print(f"\nGenerating predictions for {len(reviews)} reviews...")
-
-        for i, review in enumerate(reviews, 1):
-            # Simple, direct prompt
-            prompt = f"{review}\n\nSentiment (0 or 1):"
-
-            prediction = self.generate_constrained_prediction(prompt)
-            predictions.append(prediction)
-
-            print(f"Review {i}/{len(reviews)}: {prediction}")
-
-        return predictions
-
-    def show_examples_sequentially(self, examples: List[str], intro: str):
-        """Show learning examples one at a time"""
-        # Send introduction
-        print("Sending introduction...")
-        self.generate_response(intro, max_tokens=100)
-
-        print(f"\nShowing {len(examples)} examples...")
-
-        for i, example in enumerate(examples, 1):
-            # Just send the example, expect brief acknowledgment
-            response = self.generate_response(example, max_tokens=50)
-            print(f"Example {i}/{len(examples)} shown")
-            # Optionally print first 50 chars of response for debugging
-            # print(f"  Response: {response[:50]}...")
-
-    def clear_conversation(self):
-        """Clear conversation history but keep system message"""
-        self.conversation_messages = []
-        print("Conversation history cleared")
-
-    def save_conversation_json(self, filepath: str = None) -> str:
-        """Save conversation in JSON format"""
-        if filepath is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filepath = f"conversation_{timestamp}.json"
-
-        conversation_data = {
-            "metadata": {
-                "model_name": self.model_name,
-                "timestamp": datetime.now().isoformat(),
-                "total_messages": len(self.conversation_messages)
-            },
-            "system_message": self.system_message,
-            "messages": self.conversation_messages
-        }
-
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(conversation_data, f, indent=2, ensure_ascii=False)
-
-        print(f"Conversation saved to {filepath}")
-        return filepath
-
-    def get_conversation_stats(self) -> Dict[str, Any]:
-        """Get statistics about the current conversation"""
-        total_chars = sum(len(m["content"]) for m in self.conversation_messages)
-        if self.system_message:
-            total_chars += len(self.system_message)
-
-        return {
-            "total_messages": len(self.conversation_messages),
-            "user_messages": len([m for m in self.conversation_messages if m["role"] == "user"]),
-            "assistant_messages": len([m for m in self.conversation_messages if m["role"] == "assistant"]),
-            "has_system_message": self.system_message is not None,
-            "total_characters": total_chars
-        }
-    
-class GetPredictions:
-
-    def __init__(self, json_file_path: str, system_template: str, model_name: str):
-        self.json_file_path = json_file_path
-        self.system_template = system_template
-        self.model_name = model_name
-
-        # Components
-        self.data_loader = None
-        self.phase_manager = None
-        self.llm_client = None
-
-        # Store conversation snapshots per batch
-        self.batch_conversations = []
-
-        # Experiment results storage
-        self.experiment_results = {
-            "setup": {},
-            "batches": [],
-            "analysis": {},
-            "metadata": {
-                "start_time": None,
-                "end_time": None,
-                "model_name": model_name
-            }
-        }
-
-    def setup_experiment(self, texts: List[str] = None, labels: List[int] = None,
-                        similarity_groups: list = None,
-                        num_train_groups: int = 16, num_test_groups: int = 16,
-                        seed: int = 42) -> None:
-        """Initialize all components and prepare data"""
-        print("Setting up experiment...")
-
-        # Initialize data loader
-        self.data_loader = DataLoader(self.json_file_path, similarity_groups=similarity_groups)
-
-        # Load data based on whether we have texts/labels or JSON file
-        if texts is not None and labels is not None:
-            print(f"Loading data from provided texts and labels ({len(texts)} samples)")
-            self.data_loader.load_data_with_groups(texts, labels)
-        else:
-            print("Loading data from JSON file")
-            self.data_loader.load_data()
-
-        # Use similarity-based grouping if groups provided
-
-        print(f"Using {len(similarity_groups)} similarity groups")
-        self.data_loader.split_data_with_groups(num_train_groups, num_test_groups, seed)
-
-        # Initialize phase manager
-        self.phase_manager = PhaseManager(self.data_loader)
-
-        # Load LLM
-        print("\nLoading LLM model...")
-        self.llm_client = LLMClient(model_name=self.model_name)
-        self.llm_client.set_system_message(self.system_template)
-
-        # Store setup info
-        self.experiment_results["setup"] = {
-            "total_samples": len(self.data_loader.all_samples),
-            "train_group_size": len(self.data_loader.learn_group),
-            "test_group_size": len(self.data_loader.test_group),
-            "batch_size": 4,
-            "num_batches": self.data_loader.get_num_batches(),
-            "seed": seed,
-            "using_similarity_groups": similarity_groups is not None
-        }
-
-        print("\nSetup complete!")
-
-    def run_batch(self, batch_idx: int) -> Dict[str, Any]:
-        """Run all 4 phases for a single batch"""
-        num_batches = self.data_loader.get_num_batches()
-
-        print("\n" + "="*70)
-        print(f"BATCH {batch_idx + 1}/{num_batches}")
-        print("="*70)
-
-        batch_results = {
-            "batch_idx": batch_idx,
-            "phases": {}
-        }
-
-        # Phase 1: Show examples
-        print("\nPhase 1: Learning from 4 examples...")
-        intro = self.phase_manager.get_phase1_intro()
-        examples = self.phase_manager.get_phase1_examples(batch_idx)
-        full_message = intro + "\n\n" + examples
-        self.llm_client.generate_response(full_message, max_tokens=100)
-        batch_results["phases"]["phase_1"] = {"completed": True}
-
-        # Phase 2: Make predictions
-        print("Phase 2: Making predictions...")
-        intro = self.phase_manager.get_phase2_intro()
-        reviews = self.phase_manager.get_phase2_reviews(batch_idx)
-        predictions = self.llm_client.generate_predictions_for_reviews(reviews, intro)
-        self.phase_manager.store_phase2_predictions(batch_idx, predictions)
-        batch_results["phases"]["phase_2"] = {"predictions": predictions}
-
-        # Store Phase 1-2 conversation snapshot before clearing
-        phase12_conversation = {
-            "batch_idx": batch_idx,
-            "phases": "1-2",
-            "messages": self.llm_client.conversation_messages.copy()
-        }
-
-        # Clear conversation history before Phase 3
-        # print("\nClearing conversation history...")
-        # self.llm_client.clear_conversation()
-
-        # Phase 3: Show examples with explanations
-        print("Phase 3: Learning with explanations...")
-        intro = self.phase_manager.get_phase3_intro()
-        examples = self.phase_manager.get_phase3_examples(batch_idx)
-        full_message = intro + "\n\n" + examples
-        self.llm_client.generate_response(full_message, max_tokens=100)
-        batch_results["phases"]["phase_3"] = {"completed": True}
-
-        # Phase 4: Make predictions again
-        print("Phase 4: Making predictions after explanations...")
-        intro = self.phase_manager.get_phase4_intro()
-        reviews = self.phase_manager.get_phase4_reviews(batch_idx)
-        predictions = self.llm_client.generate_predictions_for_reviews(reviews, intro)
-        self.phase_manager.store_phase4_predictions(batch_idx, predictions)
-        batch_results["phases"]["phase_4"] = {"predictions": predictions}
-
-
-        # Store Phase 3-4 conversation snapshot before clearing
-        phase34_conversation = {
-            "batch_idx": batch_idx,
-            "phases": "3-4",
-            "messages": self.llm_client.conversation_messages.copy()
-        }
-
-        # Save both conversation snapshots
-        self.batch_conversations.append(phase12_conversation)
-        self.batch_conversations.append(phase34_conversation)
-
-        # Clear conversation history before next batch
-        print("\nClearing conversation history...")
-        self.llm_client.clear_conversation()
-
-        print(f"\nBatch {batch_idx + 1} complete!")
-
-        return batch_results
-
-    def run_complete_experiment(self) -> Dict[str, Any]:
-        """Run all batches of the experiment"""
-        print("\n" + "="*70)
-        print("STARTING BATCHED MODEL SIMULATION EXPERIMENT")
-        print("="*70)
-        print(f"\nRunning {self.data_loader.get_num_batches()} batches with 4 examples each\n")
-
-        # Record start time
-        self.experiment_results["metadata"]["start_time"] = datetime.now().isoformat()
-
-        try:
-            # Run each batch
-            for batch_idx in range(self.data_loader.get_num_batches()):
-                batch_results = self.run_batch(batch_idx)
-                self.experiment_results["batches"].append(batch_results)
-
-            # Analyze overall results
-            print("\n" + "="*70)
-            print("ANALYZING RESULTS")
-            print("="*70)
-
-            analysis = self.phase_manager.get_prediction_comparison()
-            self.experiment_results["analysis"] = analysis
-
-            # Print results
-            overall = analysis["overall"]
-            print(f"\nOVERALL RESULTS (across all {self.data_loader.get_num_batches()} batches):")
-            print(f"Phase 2 Accuracy: {overall['phase2_accuracy']:.1%} ({overall['phase2_correct']}/{overall['total_samples']})")
-            print(f"Phase 4 Accuracy: {overall['phase4_accuracy']:.1%} ({overall['phase4_correct']}/{overall['total_samples']})")
-            print(f"Improvement:      {overall['improvement']:+.1%}")
-            print(f"Changed:          {overall['predictions_changed']}/{overall['total_samples']}")
-
-            print(f"\nPER-BATCH RESULTS:")
-            for batch_result in analysis["per_batch"]:
-                idx = batch_result["batch_idx"]
-                print(f"  Batch {idx + 1}: Phase2={batch_result['phase2_accuracy']:.1%}, "
-                      f"Phase4={batch_result['phase4_accuracy']:.1%}, "
-                      f"Δ={batch_result['improvement']:+.1%}")
-
-            # Record end time
-            self.experiment_results["metadata"]["end_time"] = datetime.now().isoformat()
-
-            print("\n" + "="*70)
-            print("EXPERIMENT COMPLETE")
-            print("="*70)
-
-        except Exception as e:
-            print(f"\nExperiment failed: {str(e)}")
-            self.experiment_results["error"] = str(e)
-            raise
-
-        return self.experiment_results
-
-    def save_results(self, output_dir: str = ".") -> Dict[str, str]:
-        """Save all experiment results including per-batch conversations"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        saved_files = {}
-
-        # Save conversation for each batch
-        print(f"\nSaving {len(self.batch_conversations)} conversation files...")
-        for conv_data in self.batch_conversations:
-            batch_idx = conv_data["batch_idx"]
-            phases = conv_data["phases"]
-
-            conv_file = os.path.join(
-                output_dir,
-                f"conversation_batch{batch_idx}_{phases.replace('-', '')}_{timestamp}.json"
-            )
-
-            conversation_json = {
-                "metadata": {
-                    "model_name": self.model_name,
-                    "batch_idx": batch_idx,
-                    "phases": phases,
-                    "timestamp": datetime.now().isoformat(),
-                    "total_messages": len(conv_data["messages"])
-                },
-                "system_message": self.system_template,
-                "messages": conv_data["messages"]
-            }
-
-            with open(conv_file, 'w', encoding='utf-8') as f:
-                json.dump(conversation_json, f, indent=2, ensure_ascii=False)
-
-            saved_files[f"conversation_batch{batch_idx}_{phases}"] = conv_file
-
-        # Save experiment results
-        results_file = os.path.join(output_dir, f"results_{timestamp}.json")
-        with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(self.experiment_results, f, indent=2, ensure_ascii=False)
-        saved_files["results"] = results_file
-
-        print(f"\nFiles saved:")
-        print(f"  - {len(self.batch_conversations)} conversation files")
-        print(f"  - 1 results file: {results_file}")
-
-        return saved_files

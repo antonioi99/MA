@@ -232,11 +232,11 @@ def run_single_prediction(experiment: DataLoader,
     # Create prompt
     prompt = prompter.create_prompt(test_id, config)
     
-    # Get LLM response (you'll implement this with your specific LLM)
+    # Get LLM response
     llm_response = llm_function(prompt)
     
     # Extract prediction
-    predicted_label = prompter.extract_prediction(llm_response)
+    predicted_label_LLM = prompter.extract_prediction(llm_response)
     
     # Get actual dev predictions for reference
     dev_predictions = experiment.get_dev_predictions(test_id)
@@ -245,7 +245,7 @@ def run_single_prediction(experiment: DataLoader,
         'test_id': test_id,
         'prompt': prompt,
         'llm_response': llm_response,
-        'predicted_label': predicted_label,
+        'predicted_label_LLM': predicted_label_LLM,
         'dev_predictions': dev_predictions,
         'config': {
             'use_explanations': config.use_explanations,
@@ -433,8 +433,8 @@ def test_experiment(groups_file: str,
         json.dump(results, f, indent=2)
     
     # Print summary
-    successful = [r for r in results if 'predicted_label' in r and r['predicted_label'] is not None]
-    failed = [r for r in results if 'error' in r or r.get('predicted_label') is None]
+    successful = [r for r in results if 'predicted_label_LLM' in r and r['predicted_label_LLM'] is not None]
+    failed = [r for r in results if 'error' in r or r.get('predicted_label_LLM') is None]
     
     print("\n" + "="*50)
     print("SUMMARY")
@@ -444,7 +444,7 @@ def test_experiment(groups_file: str,
     print(f"Failed: {len(failed)}")
     
     if successful:
-        predictions = [r['predicted_label'] for r in successful]
+        predictions = [r['predicted_label_LLM'] for r in successful]
         print(f"\nPrediction distribution:")
         print(f"  Label 0 (NEGATIVE): {predictions.count(0)}")
         print(f"  Label 1 (POSITIVE): {predictions.count(1)}")

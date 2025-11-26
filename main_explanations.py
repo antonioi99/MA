@@ -1,7 +1,7 @@
 from datasets import load_dataset, concatenate_datasets
 import os
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import helper_functions, helper_functions_exp
+import helper_functions
 import numpy as np
 import json
 import argparse
@@ -79,37 +79,12 @@ def main():
     print(f"Positive: {sum(subset_labels)}")
     print(f"Negative: {len(subset_labels) - sum(subset_labels)}")
 
-    # # Create groups on the subset
-    # groups = helper_functions.create_similarity_groups(subset_texts, subset_labels, max_features=1000)
-
-    # print(f"\nCreated {len(groups)} groups of 4")
-    # print(f"Total instances grouped: {len(groups) * 4}")
-
-    # # Examine a sample group
-    # print("\n" + "="*80)
-    # print("SAMPLE GROUP:")
-    # print("="*80)
-    # sample_group = groups[0]
-    # print(f"Average similarity: {sample_group['avg_similarity']:.4f}")
-    # for i, (label, text) in enumerate(zip(sample_group['labels'], sample_group['texts'])):
-    #     label_str = "POSITIVE" if label == 1 else "NEGATIVE"
-    #     print(f"\n[{i+1}] {label_str}:")
-    #     print(text[:200] + "...")
-
-
-    probs = helper_functions_exp.predict_with_memory_management(documents=subset_texts, model=model, tokenizer=tokenizer)
-
-    # Get predicted labels (0 = negative, 1 = positive)
-    predicted_labels = np.argmax(probs, axis=1)
-
-    # Get confidence scores
-    confidence_scores = np.max(probs, axis=1)
     
 
     if args.exp == 'shap':
 
         # def shap_predict(texts):
-        #     return helper_functions_exp.predict_with_memory_management(
+        #     return helper_functions.predict_with_memory_management(
         #         documents=texts, model=model, tokenizer=tokenizer
         #     )
 
@@ -118,7 +93,7 @@ def main():
         print(f"\n\nGenerating explanations with idx in range {(start)} - {end}")
 
         def shap_predict(texts):
-            return helper_functions_exp.predict_fast(
+            return helper_functions.predict_fast(
                 documents=texts, model=model, tokenizer=tokenizer
             )
 
@@ -177,7 +152,7 @@ def main():
     
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-        explainer_lime, predict_fn = helper_functions_exp.lime_explainer(model, tokenizer)
+        explainer_lime, predict_fn = helper_functions.lime_explainer(model, tokenizer)
 
         explanations_lime = []
         for i, sample_text in enumerate(sample_texts):
@@ -195,8 +170,8 @@ def main():
 
     if args.exp == 'formatter':
 
-        formatter = helper_functions_exp.ExplanationFormatter()
-        processor = helper_functions_exp.ExplanationProcessor(formatter)
+        formatter = helper_functions.ExplanationFormatter()
+        processor = helper_functions.ExplanationProcessor(formatter)
 
 
         folder_explanations_converted = f'explanations4NLP'
@@ -210,7 +185,6 @@ def main():
             lime_pkl_dir=None,  # or None if no LIME
             samples=subset_texts,
             labels=subset_labels,
-            predictions=predicted_labels, #to be modified
             subset_indices=subset_indices,
             output_json=file_explanations_def,
             threshold_real=0.01,
