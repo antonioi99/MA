@@ -364,7 +364,7 @@ class PrometheusLLM:
 
 def test_experiment(groups_file: str, 
                    dev_data_file: str,
-                   num_test_instances: int = 20,
+                   num_test_instances: int,
                    explanation_format: str = "text_labels",
                    use_explanations: bool = True,
                    output_file: str = "test_results.json",
@@ -423,7 +423,7 @@ def test_experiment(groups_file: str,
         results.append(result)
         
         
-        # CRITICAL: Clear cache to ensure independence
+        # Clear cache to ensure independence
         llm.clear_cache()
             
     
