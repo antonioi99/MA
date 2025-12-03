@@ -15,7 +15,7 @@ class DataConfig:
 class DataLoader:
 
     
-    def __init__(self, groups_file: str, dev_data_file: str):
+    def __init__(self, groups_file: str, dev_data_file: str, prediction_type: str):
         """
         Initialize the experiment with the two JSON files.
         
@@ -23,6 +23,9 @@ class DataLoader:
             groups_file: Path to JSON with test instances and their associated dev group IDs
             dev_data_file: Path to JSON with dev set samples, predictions, and (SHAP) explanations
         """
+
+        self.prediction_type = prediction_type
+
         with open(groups_file, 'r') as f:
             self.groups = json.load(f)
         
@@ -47,12 +50,14 @@ class DataLoader:
         """Get the predictions for the dev group (useful for verification)"""
         return self.groups[test_id]["dev_predictions"]
     
-    def get_dev_instance(self, dev_id: int, include_explanation: bool = False, 
+    def get_dev_instance(self,
+                        dev_id: int, 
+                        include_explanation: bool = False, 
                         explanation_format: str = "text_labels") -> Dict:
         """
         Get a dev instance with optional SHAP explanation.
         
-        Args:
+        Args: 
             dev_id: ID of the dev instance
             include_explanation: Whether to include SHAP explanation
             explanation_format: Which SHAP format to use (e.g., "text_labels", "top_words_scores")
@@ -61,10 +66,21 @@ class DataLoader:
             Dictionary with 'sample', 'prediction', and optionally 'explanation'
         """
         dev_instance = self.dev_data[dev_id]
+
+        prediction_type = self.prediction_type
+
+        if prediction_type == 'POSITIVE_NEGATIVE':
+            if dev_instance['prediction'] == 0:
+                prediction = 'NEGATIVE'
+            elif dev_instance['prediction'] == 1:
+                prediction = 'POSITIVE'
+
+        if prediction_type == '0_1':
+            prediction = dev_instance['prediction']            
         
         result = {
             'sample': dev_instance['sample'],
-            'prediction': dev_instance['prediction']
+            'prediction': prediction
         }
         
         if include_explanation and explanation_format != "none":
@@ -114,7 +130,7 @@ class LLMPrompter:
     Handles prompting the LLM to predict what the classification model would output.
     """
     
-    def __init__(self, experiment: DataLoader):
+    def __init__(self, prediction_type: str, experiment: DataLoader):
         """
         Initialize with an experiment instance.
         
@@ -122,16 +138,17 @@ class LLMPrompter:
             experiment: DataLoader instance with loaded data
         """
         self.experiment = experiment
+        self.prediction_type = prediction_type
     
-    def create_prompt(self, test_id: str, config: DataConfig, 
-                     include_chain_of_thought: bool = False) -> str:
+    def create_prompt(self, test_id: str, config: DataConfig, prediction_type: str,
+                     chain_of_thought: bool = False) -> str:
         """
         Create a prompt for the LLM to predict the model's output.
         
         Args:
             test_id: ID of the test instance
             config: Experiment configuration (with/without explanations)
-            include_chain_of_thought: Whether to ask for reasoning before prediction
+            chain_of_thought: Whether to ask for reasoning before prediction
         
         Returns:
             Formatted prompt string
@@ -145,7 +162,10 @@ class LLMPrompter:
         # Build the prompt
         prompt = "###Task Description:\n"
         prompt += "You are given 4 examples of movie reviews with the predictions made by a sentiment classification model "
-        prompt += "(0=NEGATIVE, 1=POSITIVE). "
+        if prediction_type == '0_1':
+            prompt += "The predictions are 0 (NEGATIVE) or 1 (POSITIVE)"
+        elif prediction_type == 'POSITIVE_NEGATIVE':
+            prompt += "The predictions are NEGATIVE or POSITIVE"
         
         if config.use_explanations:
             prompt += "Each example includes an explanation showing which parts of the text influenced the model's decision. "
@@ -161,14 +181,20 @@ class LLMPrompter:
         prompt += "###Question:\n"
         prompt += "Based on the model's behavior in the examples above, what would this classification model predict for the test review?\n\n"
         
-        if include_chain_of_thought:
+        if chain_of_thought:
             prompt += "###Instructions:\n"
             prompt += "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
             prompt += "###Answer:\n"
             prompt += "Reasoning: [Your reasoning here]\n"
-            prompt += "Prediction: [0 or 1]"
+            if prediction_type == '0_1':
+                prompt += "Prediction: [0 or 1]"
+            elif prediction_type == 'POSITIVE_NEGATIVE':
+                prompt += "Prediction: [POSITVE or NEGATIVE]"
         else:
-            prompt += "###Answer (respond with only '0' or '1'):\n"
+            if prediction_type == '0_1':
+                prompt += "###Answer (respond with only '0' or '1'):\n"
+            elif prediction_type == 'POSITIVE_NEGATIVE':
+                prompt += "###Answer (respond with only 'POSITIVE' or 'NEGATIVE'):\n"
         
         return prompt
     
@@ -201,9 +227,12 @@ class LLMPrompter:
             return 1
         else:
             # More flexible extraction
-            if '0' in response and '1' not in response:
+            has_zero = '0' in response or 'NEGATIVE' in response
+            has_one = '1' in response or 'POSITIVE' in response
+            
+            if has_zero and not has_one:
                 return 0
-            elif '1' in response and '0' not in response:
+            elif has_one and not has_zero:
                 return 1
             else:
                 print(f"Warning: Could not extract prediction from: {response}")
@@ -213,7 +242,9 @@ class LLMPrompter:
 # Example usage function
 def run_single_prediction(experiment: DataLoader, 
                          prompter: LLMPrompter,
+                         prediction_type: str,
                          test_id: str,
+                         chain_of_thought: bool,
                          config: DataConfig,
                          llm_function) -> dict:
     """
@@ -230,13 +261,13 @@ def run_single_prediction(experiment: DataLoader,
         Dictionary with results
     """
     # Create prompt
-    prompt = prompter.create_prompt(test_id, config)
+    prompt = prompter.create_prompt(test_id, config, prediction_type, chain_of_thought)
     
     # Get LLM response
     llm_response = llm_function(prompt)
     
     # Extract prediction
-    predicted_label_LLM = prompter.extract_prediction(llm_response)
+    predicted_label_LLM = prompter.extract_prediction(llm_response, chain_of_thought)
     
     # Get actual dev predictions for reference
     dev_predictions = experiment.get_dev_predictions(test_id)
@@ -365,6 +396,8 @@ class PrometheusLLM:
 def test_experiment(groups_file: str, 
                    dev_data_file: str,
                    num_test_instances: int,
+                   prediction_type: str,
+                   chain_of_thought: bool,
                    explanation_format: str = "text_labels",
                    use_explanations: bool = True,
                    output_file: str = "test_results.json",
@@ -383,8 +416,8 @@ def test_experiment(groups_file: str,
     """
     # Initialize experiment
     print("Initializing experiment...")
-    experiment = DataLoader(groups_file, dev_data_file)
-    prompter = LLMPrompter(experiment)
+    experiment = DataLoader(groups_file, dev_data_file, prediction_type)
+    prompter = LLMPrompter(prediction_type, experiment)
     
     # Initialize LLM
     print("\nInitializing LLM...")
@@ -416,6 +449,8 @@ def test_experiment(groups_file: str,
             experiment=experiment,
             prompter=prompter,
             test_id=test_id,
+            prediction_type=prediction_type,
+            chain_of_thought=chain_of_thought,
             config=config,
             llm_function=llm
         )

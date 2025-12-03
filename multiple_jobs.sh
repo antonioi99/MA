@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --job-name="shap_explanations"
-#SBATCH --array=16-30%3
+#SBATCH --array=31-36%3
 #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
-#SBATCH --nodelist=dgx1
+# #SBATCH --nodelist=dgx1
 #SBATCH --container-mount-home 
 #SBATCH --mem=40G
 #SBATCH --cpus-per-task=8
