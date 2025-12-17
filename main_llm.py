@@ -20,6 +20,9 @@ def main():
     parser.add_argument("--chain_of_thought",
                         action='store_true',  # Present = True, Absent = False
                         help="Include chain of thought reasoning")
+    parser.add_argument("--start",
+                        type=int,
+                        required=False)
     args = parser.parse_args()
 
     
@@ -33,15 +36,18 @@ def main():
     dir_results = f'{main_folder}/{prediction_type_folder}/{chain_of_thought_folder}'
     os.makedirs(dir_results, exist_ok=True)
 
-    output_file = f'{dir_results}/{args.explanation_format}.json'
-
-    OUTPUT_TEST_TEST = 'testest'
+    if args.start:
+        end = args.start + args.data_size
+        output_file = f'{dir_results}/{args.explanation_format}_{args.start}_{end}.json'  
+    else:
+        output_file = f'{dir_results}/{args.explanation_format}.json'
 
 
     results = helper_llm.test_experiment(
         groups_file=groups_file,
         dev_data_file=dev_data_file,
         num_test_instances=args.data_size,
+        start=args.start,
         prediction_type=args.prediction_type,
         chain_of_thought=args.chain_of_thought,
         use_explanations=False if args.explanation_format == 'baseline' else True,
