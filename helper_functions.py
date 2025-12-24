@@ -38,6 +38,12 @@ class ExplanationFormatter:
     def __init__(self):
         self.explanation_type = None
         self.processed_data = []
+        try:
+            import en_core_web_sm
+            self.nlp = en_core_web_sm.load()
+        except:
+            self.nlp = None
+            print("Warning: spaCy model not loaded. Install with: python -m spacy download en_core_web_sm")
 
     def _extract_lime_data(self, lime_explanations: List) -> List[Tuple[List[str], List[float]]]:
         """
@@ -64,23 +70,83 @@ class ExplanationFormatter:
 
         return extracted_data
 
+    def _reconstruct_words_from_llama_shap(self, shap_values):
+        """
+        Reconstruct original words from LLaMA SHAP tokens.
+        
+        SHAP returns tokens with regular spaces instead of Ġ markers.
+        - Tokens starting with ' ' (space) indicate a new word
+        - Tokens without leading space are continuations of the previous word
+        
+        Args:
+            shap_values: SHAP Explanation object for a single sample
+            
+        Returns:
+            Tuple of (words_list, scores_list)
+        """
+        tokens = shap_values.data[0]
+        token_shap_values = shap_values.values[0]
+        
+        # Handle multi-dimensional scores (for multi-class)
+        if len(token_shap_values.shape) > 1:
+            token_shap_values = token_shap_values[:, 1]
+        
+        words = []
+        scores = []
+        current_word = ""
+        current_shaps = []
+        
+        for i, (token, shap_val) in enumerate(zip(tokens, token_shap_values)):
+            # Skip special tokens and empty tokens
+            if token in ['<s>', '</s>', '<pad>', '<unk>', '<|begin_of_text|>', '<|end_of_text|>', '']:
+                continue
+            
+            # Check if this starts a new word
+            # Tokens starting with a space indicate a new word
+            starts_new_word = token.startswith(' ')
+            
+            # Special case: first real token always starts a new word
+            if i == 1 and not starts_new_word:  # i==1 because i==0 is usually empty
+                starts_new_word = True
+            
+            if starts_new_word and current_word:
+                # Save the previous word
+                avg_shap = np.mean(current_shaps) if current_shaps else 0.0
+                words.append(current_word)
+                scores.append(avg_shap)
+                current_word = ""
+                current_shaps = []
+            
+            # Remove leading space and add to current word
+            clean_token = token.lstrip(' ')
+            current_word += clean_token
+            current_shaps.append(shap_val)
+        
+        # Don't forget the last word
+        if current_word:
+            avg_shap = np.mean(current_shaps) if current_shaps else 0.0
+            words.append(current_word)
+            scores.append(avg_shap)
+        
+        return words, scores
 
-
-
+        
     def _extract_shap_data(self, shap_values) -> List[Tuple[List[str], List[float]]]:
         """
-        Extract words and scores from SHAP explanations
+        Extract words and scores from SHAP explanations.
+        Reconstructs original words from LLaMA subtokens.
         """
         extracted_data = []
 
         for i in range(len(shap_values.data)):
-            words = list(shap_values.data[i])
-            scores = shap_values.values[i]
-
-            if len(scores.shape) > 1:
-                scores = scores[:, 1]  # take contribution for class 1
-
-            extracted_data.append((words, list(scores)))
+            # Create a single-sample shap_values object for reconstruction
+            single_shap = type('obj', (object,), {
+                'data': [shap_values.data[i]],
+                'values': [shap_values.values[i]]
+            })()
+            
+            words, scores = self._reconstruct_words_from_llama_shap(single_shap)
+            extracted_data.append((words, scores))
 
         return extracted_data
 
@@ -188,7 +254,6 @@ class ExplanationFormatter:
 
         return results
 
-
     def extract_as_structured_text_labels(self, threshold: float = 0.01) -> List[str]:
         """
         Format explanations as structured text with positive/negative sections but WITHOUT scores
@@ -225,7 +290,6 @@ class ExplanationFormatter:
 
         return results
 
-
     def extract_top_words_labels(self, top_n: int = 20) -> List[str]:
         """
         Extract top N most influential words with POSITIVE/NEGATIVE labels (no scores)
@@ -251,6 +315,156 @@ class ExplanationFormatter:
             results.append("\n".join(result_parts))
 
         return results
+
+    def extract_as_natural_explanation(self, top_n: int = 5) -> List[str]:
+        """
+        Format explanations as natural language sentences explaining the prediction
+        
+        Args:
+            top_n: Number of top influential words to include
+        """
+        import string
+        
+        # Common conjunctions to filter out
+        conjunctions = {
+            'and', 'but', 'or', 'nor', 'for', 'yet', 'so', 
+            'although', 'because', 'since', 'unless', 'while',
+            'if', 'then', 'than', 'that', 'though', 'whether'
+        }
+        
+        results = []
+        
+        for idx, (words, scores) in enumerate(self.processed_data):
+            # Determine prediction based on average score
+            avg_score = sum(scores) / len(scores) if scores else 0
+            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+            
+            # Get top influential words for the predicted class
+            word_scores = list(zip(words, scores))
+            
+            # Filter for words that align with the prediction
+            if prediction == "POSITIVE":
+                relevant_words = [(w, s) for w, s in word_scores if s > 0]
+            else:
+                relevant_words = [(w, s) for w, s in word_scores if s < 0]
+            
+            # Filter out punctuation and conjunctions
+            filtered_words = [
+                (word, score) for word, score in relevant_words
+                if word not in string.punctuation 
+                and word.lower() not in conjunctions
+                and len(word) > 2
+            ]
+            
+            # Sort by absolute score and get top N
+            filtered_words.sort(key=lambda x: abs(x[1]), reverse=True)
+            
+            # Get top words (already reconstructed, no need for fragment reconstruction)
+            top_words = []
+            seen_words = set()  # Avoid duplicates
+            
+            for word, _ in filtered_words[:top_n * 2]:  # Get more candidates in case of duplicates
+                if len(top_words) >= top_n:
+                    break
+                
+                # Add if not already seen
+                if word.lower() not in seen_words:
+                    top_words.append(word)
+                    seen_words.add(word.lower())
+            
+            # Format as natural sentence
+            if top_words:
+                words_str = ", ".join(top_words)
+                result = f"The model predicted {prediction} because of the following words: {words_str}"
+            else:
+                result = f"The model predicted {prediction}"
+            
+            results.append(result)
+        
+        return results
+
+    def extract_pos(self, top_n: int = 5, context_window: int = 2, pos = {"ADJ", "VERB", "NOUN", "ADV"}) -> List[str]:
+        """
+        Extract adjectives, verbs, and nouns with contextual POS tagging
+        
+        Args:
+            top_n: Number of top influential words to include
+            context_window: Number of surrounding words to use for POS tagging
+            pos: Set of POS tags to include
+        """
+        if self.nlp is None:
+            raise RuntimeError("spaCy model not loaded")
+        
+        import string
+        
+        results = []
+        
+        for idx, (words, scores) in enumerate(self.processed_data):
+            # Determine prediction
+            avg_score = sum(scores) / len(scores) if scores else 0
+            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+            
+            # Build context for each word (use surrounding words)
+            word_to_pos = {}
+            for i, word in enumerate(words):
+                if len(word) <= 2:
+                    continue
+                
+                # Get context window around the word
+                start = max(0, i - context_window)
+                end = min(len(words), i + context_window + 1)
+                context = " ".join(words[start:end])
+                
+                doc = self.nlp(context)
+                # Find the token that matches our word
+                for token in doc:
+                    if token.text.lower() == word.lower():
+                        word_to_pos[word] = token.pos_
+                        break
+            
+            word_scores = list(zip(words, scores))
+            
+            # Filter for content words
+            content_pos = pos
+            
+            if prediction == "POSITIVE":
+                relevant_words = [(w, s) for w, s in word_scores 
+                                if s > 0 
+                                and word_to_pos.get(w) in content_pos
+                                and len(w) > 2
+                                and w not in string.punctuation]
+            else:
+                relevant_words = [(w, s) for w, s in word_scores 
+                                if s < 0 
+                                and word_to_pos.get(w) in content_pos
+                                and len(w) > 2
+                                and w not in string.punctuation]
+            
+            # Sort by absolute score and get top N
+            relevant_words.sort(key=lambda x: abs(x[1]), reverse=True)
+            
+            # Get top words (already reconstructed)
+            top_words = []
+            seen_words = set()
+            
+            for word, _ in relevant_words[:top_n * 2]:  # Get more candidates
+                if len(top_words) >= top_n:
+                    break
+                
+                # Add if not already seen
+                if word.lower() not in seen_words:
+                    top_words.append(word)
+                    seen_words.add(word.lower())
+            
+            if top_words:
+                words_str = ", ".join(top_words)
+                result = f"The model predicted {prediction} because of key words: {words_str}"
+            else:
+                result = f"The model predicted {prediction} (no significant words found)"
+            
+            results.append(result)
+        
+        return results
     
 class ExplanationProcessor:
     """
@@ -259,19 +473,21 @@ class ExplanationProcessor:
     
     def __init__(self, formatter: ExplanationFormatter):
         self.formatter = formatter
-        self.explanation_types = ['text', 'structured_text', 'top_words']
+        self.explanation_types = ['text', 'structured_text', 'top_words', 'natural']  # Added 'natural'
     
     def load_explanation_from_pkl(self, pkl_path: str):
         """Load a single explanation from a pkl file"""
         with open(pkl_path, 'rb') as f:
             return pickle.load(f)
     
-    def process_single_explanation(self, explanation, explanation_type: str, threshold: float) -> Dict[str, str]:
+    def process_single_explanation(self, explanation, explanation_type: str, threshold: float, original_texts: List[str]) -> Dict[str, str]:
         """
         Process a single explanation and return all formatted versions
         
         Returns:
-            dict with keys: 'text', 'structured_text', 'top_words'
+            dict with keys: 'text_scores', 'text_labels', 'structured_text_scores', 
+                           'structured_text_labels', 'top_words_scores', 'top_words_labels',
+                           'natural_words', 'part_of_speech'
         """
         # Load explanation into formatter
         self.formatter.load_explanations(explanation, explanation_type)
@@ -285,8 +501,10 @@ class ExplanationProcessor:
             'structured_text_labels': self.formatter.extract_as_structured_text_labels(threshold=threshold)[0],
 
             'top_words_scores': self.formatter.extract_top_words_scores(top_n=20)[0],
-            'top_words_labels': self.formatter.extract_top_words_labels(top_n=20)[0]
+            'top_words_labels': self.formatter.extract_top_words_labels(top_n=20)[0],
             
+            'natural_words': self.formatter.extract_as_natural_explanation(top_n=5)[0],
+            'part_of_speech': self.formatter.extract_pos(top_n=5)[0]
         }
         
         return formatted
@@ -329,7 +547,7 @@ class ExplanationProcessor:
                 continue
             
             shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
-            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real)
+            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real, original_texts=samples)
             
             # Load SHAP random explanation
             shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
@@ -339,7 +557,7 @@ class ExplanationProcessor:
                 shap_random_formatted = {}
             else:
                 shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
-                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random)
+                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random, original_texts=samples)
             
             # Load LIME explanation (if available)
             lime_formatted = {}
@@ -347,7 +565,7 @@ class ExplanationProcessor:
                 lime_pkl_path = lime_dir / f"lime_values_{sample_idx}.pkl"
                 if lime_pkl_path.exists():
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
-                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
+                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real, original_texts=samples)
                 else:
                     print(f"Warning: LIME file not found for index {sample_idx}")
             
@@ -367,111 +585,6 @@ class ExplanationProcessor:
         print(f"Saved {len(data_dict)} samples to {output_json}")
 
 
-def extract_shap_as_text_all(shap_values, threshold=0.01):
-    """Process all samples and return list of formatted texts"""
-    results = []
-    for i in range(len(shap_values.data)):
-        data = shap_values.data[i]
-        values = shap_values.values[i]
-
-        if len(values.shape) > 1:
-            values = values[:, 1]
-
-        result_parts = []
-        for word, value in zip(data, values):
-            if abs(value) < threshold:
-                result_parts.append(word)
-            else:
-                sign = "+" if value >= 0 else ""
-                result_parts.append(f"{word}[{sign}{value:.3f}]")
-
-        results.append(" ".join(result_parts))
-
-    return results
-
-
-def extract_shap_as_structured_text_all(shap_values, threshold=0.01):
-    """
-    Extract SHAP explanations as structured text with clear positive/negative sections for all samples
-
-    Args:
-        shap_values: SHAP values object from explainer
-        threshold: Minimum absolute SHAP value to include
-
-    Returns:
-        list: List of structured text strings with positive and negative contributions
-    """
-    results = []
-
-    for i in range(len(shap_values.data)):
-        data = shap_values.data[i]
-        values = shap_values.values[i]
-
-        # Handle multi-output case
-        if len(values.shape) > 1:
-            values = values[:, 1]  # Use positive class
-
-        positive_words = []
-        negative_words = []
-        neutral_words = []
-
-        for word, value in zip(data, values):
-            if abs(value) < threshold:
-                neutral_words.append(word)
-            elif value > 0:
-                positive_words.append(f"{word}(+{value:.3f})")
-            else:
-                negative_words.append(f"{word}({value:.3f})")
-
-        result = []
-        if positive_words:
-            result.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
-        if negative_words:
-            result.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
-        if neutral_words:
-            result.append(f"NEUTRAL: {' '.join(neutral_words)}")
-
-        results.append("\n".join(result))
-
-    return results
-
-
-def extract_top_words_with_scores_all(shap_values, top_n=20):
-    """
-    Extract top N most influential words with their SHAP scores for all samples
-
-    Args:
-        shap_values: SHAP values object from explainer
-        top_n: Number of top words to return per sample
-
-    Returns:
-        list: List of strings with top influential words and scores for each sample
-    """
-    results = []
-
-    for i in range(len(shap_values.data)):
-        data = shap_values.data[i]
-        values = shap_values.values[i]
-
-        # Handle multi-output case
-        if len(values.shape) > 1:
-            values = values[:, 1]
-
-        # Create list of (word, score) tuples and sort by absolute value
-        word_scores = list(zip(data, values))
-        word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
-
-        # Take top N
-        top_words = word_scores[:top_n]
-
-        result_parts = []
-        for word, score in top_words:
-            sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-            result_parts.append(f"{word}: {score:.3f} ({sentiment})")
-
-        results.append("\n".join(result_parts))
-
-    return results
 
 def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dict]:
     """
