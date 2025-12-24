@@ -480,7 +480,7 @@ class ExplanationProcessor:
         with open(pkl_path, 'rb') as f:
             return pickle.load(f)
     
-    def process_single_explanation(self, explanation, explanation_type: str, threshold: float, original_texts: List[str]) -> Dict[str, str]:
+    def process_single_explanation(self, explanation, explanation_type: str, threshold: float) -> Dict[str, str]:
         """
         Process a single explanation and return all formatted versions
         
@@ -547,7 +547,7 @@ class ExplanationProcessor:
                 continue
             
             shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
-            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real, original_texts=samples)
+            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real)
             
             # Load SHAP random explanation
             shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
@@ -557,7 +557,7 @@ class ExplanationProcessor:
                 shap_random_formatted = {}
             else:
                 shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
-                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random, original_texts=samples)
+                shap_random_formatted = self.process_single_explanation(shap_random_explanation, 'shap', threshold=threshold_random)
             
             # Load LIME explanation (if available)
             lime_formatted = {}
@@ -565,7 +565,7 @@ class ExplanationProcessor:
                 lime_pkl_path = lime_dir / f"lime_values_{sample_idx}.pkl"
                 if lime_pkl_path.exists():
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
-                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real, original_texts=samples)
+                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
                 else:
                     print(f"Warning: LIME file not found for index {sample_idx}")
             
