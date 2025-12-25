@@ -163,32 +163,54 @@ class ExplanationFormatter:
         else:
             raise ValueError("explanation_type must be 'shap' or 'lime'")
 
-    def extract_as_text_scores(self, threshold: float) -> List[str]:
+
+
+    def extract_as_text(self, brackets, threshold: float = 0.01) -> List[str]:
         """
-        Format explanations as text with inline scores
+        Format explanations as text with POSITIVE/NEGATIVE labels instead of scores
+        
+        Example: "This[POSITIVE] is[NEGATIVE] a good[POSITIVE] film[POSITIVE]"
         """
         results = []
 
         for words, scores in self.processed_data:
+
+            avg_score = sum(scores) / len(scores) if scores else 0
+            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+
             result_parts = []
+
             for word, score in zip(words, scores):
                 if abs(score) < threshold:
                     result_parts.append(word)
                 else:
-                    sign = "+" if score >= 0 else ""
-                    result_parts.append(f"{word}[{sign}{score:.3f}]")
+                    if brackets == 'label':
+                        label = "POSITIVE" if score >= 0 else "NEGATIVE"
+                        result_parts.append(f"{word}[{label}]")
+                    elif brackets == 'score':
+                        sign = "+" if score >= 0 else ""
+                        result_parts.append(f"{word}[{sign}{score:.3f}]")
+            
+            if brackets == 'score':
+                explanation = f"The model predicted {prediction}. Bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
+            elif brackets == 'label':
+                explanation = f"The model predicted {prediction}. Bracketed labels indicate each word's contribution to the overall sentiment (NEGATIVE pulls toward negative sentiment, POSITIVE pulls toward positive sentiment).\n\n"
 
-            results.append(" ".join(result_parts))
+            results.append(explanation + " ".join(result_parts))
 
         return results
 
-    def extract_as_structured_text_scores(self, threshold: float) -> List[str]:
+    def extract_as_structured_text(self, brackets, threshold: float = 0.01) -> List[str]:
         """
         Format explanations as structured text with positive/negative sections
         """
         results = []
 
         for words, scores in self.processed_data:
+
+            avg_score = sum(scores) / len(scores) if scores else 0
+            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+
             positive_words = []
             negative_words = []
             neutral_words = []
@@ -197,11 +219,25 @@ class ExplanationFormatter:
                 if abs(score) < threshold:
                     neutral_words.append(word)
                 elif score > 0:
-                    positive_words.append(f"{word}[+{score:.3f}]")
+                    if brackets == 'score':
+                        positive_words.append(f"{word}[+{score:.3f}]")
+                    elif brackets == 'label':
+                        positive_words.append(word)
+
                 else:
-                    negative_words.append(f"{word}[{score:.3f}]")
+                    if brackets == 'score':
+                        negative_words.append(f"{word}[{score:.3f}]")
+                    elif brackets == 'label':
+                        negative_words.append(word)
 
             result_parts = []
+            if brackets == 'score':
+                explanation = f"The model predicted {prediction}. Words are grouped by sentiment: POSITIVE, NEGATIVE, and NEUTRAL. The bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
+                result_parts.append(explanation)
+            elif brackets == 'label':
+                explanation = f"The model predicted {prediction}. Words are grouped by their sentiment contribution: POSITIVE, NEGATIVE, and NEUTRAL.\n\n"
+                result_parts.append(explanation)
+            
             if positive_words:
                 result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
             if negative_words:
@@ -209,7 +245,7 @@ class ExplanationFormatter:
             if neutral_words:
                 result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
 
-            results.append("\n".join(result_parts))
+            results.append(" ".join(result_parts))
 
         return results
 
@@ -231,76 +267,19 @@ class ExplanationFormatter:
             result_parts = []
             
             if brackets == 'score':
-                explanation = f"The model predicted {prediction}. The following words were the most relevant for the sentiment classification. In brackets, a negative score indicates a negative word, while a positive score a positive score. "
+                explanation = f"The model predicted {prediction}. These are the most influential words for this prediction. Scores show each word's contribution (negative values push toward negative sentiment, positive values push toward positive sentiment):\n\n"
                 for word, score in top_words:
-                    result_parts.append(f"{word} [{score:.3f}] \n ")
+                    result_parts.append(f"{word} [{score:+.3f}]\n")
             elif brackets == 'label':
-                explanation = f"The model predicted {prediction}. The following words were the most relevant for the sentiment classification. "
+                explanation = f"The model predicted {prediction}. These are the most influential words for this prediction:\n\n"
                 for word, score in top_words:
                     sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-                    result_parts.append(f"{word} [{sentiment}] \n ")
+                    result_parts.append(f"{word} [{sentiment}]\n")
                     
             results.append(explanation + ''.join(result_parts))
 
         return results
         
-    
-    def extract_as_text_labels(self, threshold: float = 0.01) -> List[str]:
-        """
-        Format explanations as text with POSITIVE/NEGATIVE labels instead of scores
-        
-        Example: "This[POSITIVE] is[NEGATIVE] a good[POSITIVE] film[POSITIVE]"
-        """
-        results = []
-
-        for words, scores in self.processed_data:
-            result_parts = []
-            for word, score in zip(words, scores):
-                if abs(score) < threshold:
-                    result_parts.append(word)
-                else:
-                    label = "POSITIVE" if score >= 0 else "NEGATIVE"
-                    result_parts.append(f"{word}[{label}]")
-
-            results.append(" ".join(result_parts))
-
-        return results
-
-    def extract_as_structured_text_labels(self, threshold: float = 0.01) -> List[str]:
-        """
-        Format explanations as structured text with positive/negative sections but WITHOUT scores
-        
-        Example:
-        POSITIVE SENTIMENT: This good film very funny
-        NEGATIVE SENTIMENT: is after no Ernest !
-        NEUTRAL: . Yet
-        """
-        results = []
-
-        for words, scores in self.processed_data:
-            positive_words = []
-            negative_words = []
-            neutral_words = []
-
-            for word, score in zip(words, scores):
-                if abs(score) < threshold:
-                    neutral_words.append(word)
-                elif score > 0:
-                    positive_words.append(word)
-                else:
-                    negative_words.append(word)
-
-            result_parts = []
-            if positive_words:
-                result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
-            if negative_words:
-                result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
-            if neutral_words:
-                result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
-
-            results.append("The model predicted {prediction}. The following words were the most relevant for the sentiment classification. \n".join(result_parts))
-
-        return results
 
 
     def extract_as_natural_explanation(self, top_n: int = 5) -> List[str]:
@@ -481,11 +460,11 @@ class ExplanationProcessor:
         
         # Generate all formats
         formatted = {
-            'text_scores': self.formatter.extract_as_text_scores(threshold)[0],
-            'text_labels': self.formatter.extract_as_text_labels(threshold=threshold)[0],
+            'text_scores': self.formatter.extract_as_text(brackets='score', threshold=threshold)[0],
+            'text_labels': self.formatter.extract_as_text(brackets='label', threshold=threshold)[0],
 
-            'structured_text_scores': self.formatter.extract_as_structured_text_scores(threshold)[0],
-            'structured_text_labels': self.formatter.extract_as_structured_text_labels(threshold=threshold)[0],
+            'structured_text_scores': self.formatter.extract_as_structured_text(brackets='score', threshold=threshold)[0],
+            'structured_text_labels': self.formatter.extract_as_structured_text(brackets='label', threshold=threshold)[0],
 
             'top_words_scores': self.formatter.extract_top_words(brackets='score', top_n=20)[0],
             'top_words_labels': self.formatter.extract_top_words(brackets='label', top_n=20)[0],
