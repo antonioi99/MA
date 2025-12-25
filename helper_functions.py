@@ -213,25 +213,37 @@ class ExplanationFormatter:
 
         return results
 
-    def extract_top_words_scores(self, top_n: int = 20) -> List[str]:
+    def extract_top_words(self, brackets, top_n: int = 20) -> List[str]:
         """
         Extract top N most influential words with their scores
         """
         results = []
 
         for words, scores in self.processed_data:
+
+            avg_score = sum(scores) / len(scores) if scores else 0
+            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+
             word_scores = list(zip(words, scores))
             word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
 
             top_words = word_scores[:top_n]
             result_parts = []
-            for word, score in top_words:
-                sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-                result_parts.append(f"{word}: {score:.3f} [{sentiment}]")
-
-            results.append("\n".join(result_parts))
+            
+            if brackets == 'score':
+                explanation = f"The model predicted {prediction}. The following words were the most relevant for the sentiment classification. In brackets, a negative score indicates a negative word, while a positive score a positive score. "
+                for word, score in top_words:
+                    result_parts.append(f"{word} [{score:.3f}] \n ")
+            elif brackets == 'label':
+                explanation = f"The model predicted {prediction}. The following words were the most relevant for the sentiment classification. "
+                for word, score in top_words:
+                    sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+                    result_parts.append(f"{word} [{sentiment}] \n ")
+                    
+            results.append(explanation + ''.join(result_parts))
 
         return results
+        
     
     def extract_as_text_labels(self, threshold: float = 0.01) -> List[str]:
         """
@@ -286,35 +298,10 @@ class ExplanationFormatter:
             if neutral_words:
                 result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
 
-            results.append("\n".join(result_parts))
+            results.append("The model predicted {prediction}. The following words were the most relevant for the sentiment classification. \n".join(result_parts))
 
         return results
 
-    def extract_top_words_labels(self, top_n: int = 20) -> List[str]:
-        """
-        Extract top N most influential words with POSITIVE/NEGATIVE labels (no scores)
-        
-        Example:
-        !: NEGATIVE
-        good: POSITIVE
-        no: NEGATIVE
-        funny: POSITIVE
-        """
-        results = []
-
-        for words, scores in self.processed_data:
-            word_scores = list(zip(words, scores))
-            word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
-
-            top_words = word_scores[:top_n]
-            result_parts = []
-            for word, score in top_words:
-                sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-                result_parts.append(f"{word}: {sentiment}")
-
-            results.append("\n".join(result_parts))
-
-        return results
 
     def extract_as_natural_explanation(self, top_n: int = 5) -> List[str]:
         """
@@ -458,7 +445,7 @@ class ExplanationFormatter:
             
             if top_words:
                 words_str = ", ".join(top_words)
-                result = f"The model predicted {prediction} because of key words: {words_str}"
+                result = f"The model predicted {prediction} because of following words: {words_str}"
             else:
                 result = f"The model predicted {prediction} (no significant words found)"
             
@@ -500,8 +487,8 @@ class ExplanationProcessor:
             'structured_text_scores': self.formatter.extract_as_structured_text_scores(threshold)[0],
             'structured_text_labels': self.formatter.extract_as_structured_text_labels(threshold=threshold)[0],
 
-            'top_words_scores': self.formatter.extract_top_words_scores(top_n=20)[0],
-            'top_words_labels': self.formatter.extract_top_words_labels(top_n=20)[0],
+            'top_words_scores': self.formatter.extract_top_words(brackets='score', top_n=20)[0],
+            'top_words_labels': self.formatter.extract_top_words(brackets='label', top_n=20)[0],
             
             'natural_words': self.formatter.extract_as_natural_explanation(top_n=5)[0],
             'part_of_speech': self.formatter.extract_pos(top_n=5)[0]
