@@ -15,7 +15,7 @@ class DataConfig:
 class DataLoader:
 
     
-    def __init__(self, groups_file: str, dev_data_file: str, prediction_type: str):
+    def __init__(self, groups_file: str, dev_data_file: str, dev_data_predictions: str):
         """
         Initialize the experiment with the two JSON files.
         
@@ -24,7 +24,6 @@ class DataLoader:
             dev_data_file: Path to JSON with dev set samples, predictions, and (SHAP) explanations
         """
 
-        self.prediction_type = prediction_type
 
         with open(groups_file, 'r') as f:
             self.groups = json.load(f)
@@ -67,16 +66,12 @@ class DataLoader:
         """
         dev_instance = self.dev_data[dev_id]
 
-        prediction_type = self.prediction_type
 
-        if prediction_type == 'POSITIVE_NEGATIVE':
-            if dev_instance['prediction'] == 0:
-                prediction = 'NEGATIVE'
-            elif dev_instance['prediction'] == 1:
-                prediction = 'POSITIVE'
-
-        if prediction_type == '0_1':
-            prediction = dev_instance['prediction']            
+        if dev_prediction['prediction'] == 0:
+            prediction = 'NEGATIVE'
+        elif dev_prediction['prediction'] == 1:
+            prediction = 'POSITIVE'
+         
         
         result = {
             'sample': dev_instance['sample'],
@@ -129,8 +124,25 @@ class LLMPrompter:
     """
     Handles prompting the LLM to predict what the classification model would output.
     """
+
+    PROMPT_TEMPLATE = """###Task Description:
+    You are given 4 examples of movie reviews with the predictions made by a sentiment classification model. The predictions are NEGATIVE or POSITIVE. {explanation_desc}
+    Your task is to analyze the model's behavior pattern and predict what the model would output for a new test review.
+
+    ###Examples from the model:
+    {dev_examples}
+
+    ###Test Review:
+    {test_instance}
+
+    ###Question:
+    Based on the model's behavior in the examples above, what would this classification model predict for the test review?
+
+    {answer_section}
+    """
+
     
-    def __init__(self, prediction_type: str, experiment: DataLoader):
+    def __init__(self, experiment: DataLoader):
         """
         Initialize with an experiment instance.
         
@@ -138,65 +150,67 @@ class LLMPrompter:
             experiment: DataLoader instance with loaded data
         """
         self.experiment = experiment
-        self.prediction_type = prediction_type
     
-    def create_prompt(self, test_id: str, config: DataConfig, prediction_type: str,
-                     chain_of_thought: bool = False) -> str:
+
+    def create_prompt(
+        self,
+        test_id: str,
+        config: DataConfig,
+        chain_of_thought: bool = False
+    ) -> tuple[str, str]:
         """
-        Create a prompt for the LLM to predict the model's output.
-        
-        Args:
-            test_id: ID of the test instance
-            config: Experiment configuration (with/without explanations)
-            chain_of_thought: Whether to ask for reasoning before prediction
-        
         Returns:
-            Formatted prompt string
+            full_prompt: prompt with dev examples and test instance
+            base_prompt: same prompt, but without dev examples and test instance
         """
-        # Get the formatted dev examples
-        dev_examples = self.experiment.format_dev_examples(test_id, config)
-        
-        # Get the test instance
-        test_instance = self.experiment.get_test_instance(test_id)
-        
-        # Build the prompt
-        prompt = "###Task Description:\n"
-        prompt += "You are given 4 examples of movie reviews with the predictions made by a sentiment classification model "
-        if prediction_type == '0_1':
-            prompt += "The predictions are 0 (NEGATIVE) or 1 (POSITIVE)"
-        elif prediction_type == 'POSITIVE_NEGATIVE':
-            prompt += "The predictions are NEGATIVE or POSITIVE"
-        
+
+
+        # Explanation description
+        explanation_desc = ""
         if config.use_explanations:
-            prompt += "Each example includes an explanation showing which parts of the text influenced the model's decision. "
-        
-        prompt += "Your task is to analyze the model's behavior pattern and predict what the model would output for a new test review.\n\n"
-        
-        prompt += "###Examples from the model:\n"
-        prompt += dev_examples + "\n\n"
-        
-        prompt += "###Test Review:\n"
-        prompt += f"{test_instance}\n\n"
-        
-        prompt += "###Question:\n"
-        prompt += "Based on the model's behavior in the examples above, what would this classification model predict for the test review?\n\n"
-        
+            explanation_desc = (
+                "Each example includes an explanation showing which parts of the text influenced the model's decision. "
+            )
+
+        # Answer section
         if chain_of_thought:
-            prompt += "###Instructions:\n"
-            prompt += "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
-            prompt += "###Answer:\n"
-            prompt += "Reasoning: [Your reasoning here]\n"
-            if prediction_type == '0_1':
-                prompt += "Prediction: [0 or 1]"
-            elif prediction_type == 'POSITIVE_NEGATIVE':
-                prompt += "Prediction: [POSITVE or NEGATIVE]"
+
+            answer_section = (
+                "###Instructions:\n"
+                "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
+                "###Answer:\n"
+                "Reasoning: [Your reasoning here]\n"
+                "Prediction: [POSITIVE or NEGATIVE]"
+            )
         else:
-            if prediction_type == '0_1':
-                prompt += "###Answer (respond with only '0' or '1'):\n"
-            elif prediction_type == 'POSITIVE_NEGATIVE':
-                prompt += "###Answer (respond with only 'POSITIVE' or 'NEGATIVE'):\n"
-        
-        return prompt
+            answer_section = (
+                "###Answer (reply only with 'NEGATIVE' or 'POSITIVE'):"
+            )
+
+        # Instance-specific content
+        dev_examples = self.experiment.format_dev_examples(test_id, config)
+        test_instance = self.experiment.get_test_instance(test_id)
+
+        # Full prompt
+        full_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
+            prediction_desc=prediction_desc,
+            explanation_desc=explanation_desc,
+            dev_examples=dev_examples,
+            test_instance=test_instance,
+            answer_section=answer_section,
+        )
+
+        # Base prompt (without examples & test instance)
+        base_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
+            prediction_desc=prediction_desc,
+            explanation_desc=explanation_desc,
+            dev_examples="[DEV_EXAMPLES]",
+            test_instance="[TEST_INSTANCE]",
+            answer_section=answer_section,
+        )
+
+        return full_prompt, base_prompt
+
     
     def extract_prediction(self, llm_response: str, 
                           chain_of_thought: bool = False) -> Optional[int]:
@@ -212,37 +226,19 @@ class LLMPrompter:
         """
         response = llm_response.strip()
         
-        if chain_of_thought:
-            # Look for "Prediction: X" pattern
-            if "Prediction:" in response:
-                prediction_part = response.split("Prediction:")[-1].strip()
-                response = prediction_part
         
-        # Try to extract 0 or 1
         response = response.strip().strip('"\'.,!?')
-        
-        if response == '0' or response == 'NEGATIVE' or '0' in response[:5]:
+
+        if 'NEGATIVE' in response:
             return 0
-        elif response == '1' or response == 'POSITIVE' or '1' in response[:5]:
+        elif 'POSITIVE' in response:
             return 1
-        else:
-            # More flexible extraction
-            has_zero = '0' in response or 'NEGATIVE' in response
-            has_one = '1' in response or 'POSITIVE' in response
-            
-            if has_zero and not has_one:
-                return 0
-            elif has_one and not has_zero:
-                return 1
-            else:
-                print(f"Warning: Could not extract prediction from: {response}")
-                return None
+        
 
 
 # Example usage function
 def run_single_prediction(experiment: DataLoader, 
                          prompter: LLMPrompter,
-                         prediction_type: str,
                          test_id: str,
                          chain_of_thought: bool,
                          config: DataConfig,
@@ -261,10 +257,10 @@ def run_single_prediction(experiment: DataLoader,
         Dictionary with results
     """
     # Create prompt
-    prompt = prompter.create_prompt(test_id, config, prediction_type, chain_of_thought)
+    full_prompt, base_prompt = prompter.create_prompt(test_id, config, chain_of_thought)
     
     # Get LLM response
-    llm_response = llm_function(prompt)
+    llm_response = llm_function(full_prompt)
     
     # Extract prediction
     predicted_label_LLM = prompter.extract_prediction(llm_response, chain_of_thought)
@@ -274,7 +270,8 @@ def run_single_prediction(experiment: DataLoader,
     
     return {
         'test_id': test_id,
-        'prompt': prompt,
+        'prompt': base_prompt,
+        'full_prompt': full_prompt,
         'llm_response': llm_response,
         'predicted_label_LLM': predicted_label_LLM,
         'dev_predictions': dev_predictions,
@@ -396,8 +393,8 @@ class PrometheusLLM:
 def test_experiment(groups_file: str, 
                    dev_data_file: str,
                    num_test_instances: int,
-                   prediction_type: str,
                    chain_of_thought: bool,
+                   start: int = 0,
                    explanation_format: str = "text_labels",
                    use_explanations: bool = True,
                    output_file: str = "test_results.json",
@@ -416,8 +413,8 @@ def test_experiment(groups_file: str,
     """
     # Initialize experiment
     print("Initializing experiment...")
-    experiment = DataLoader(groups_file, dev_data_file, prediction_type)
-    prompter = LLMPrompter(prediction_type, experiment)
+    experiment = DataLoader(groups_file, dev_data_file)
+    prompter = LLMPrompter(experiment)
     
     # Initialize LLM
     print("\nInitializing LLM...")
@@ -431,7 +428,8 @@ def test_experiment(groups_file: str,
     
     # Get test IDs (limit to num_test_instances)
     all_test_ids = experiment.get_all_test_ids()
-    test_ids = all_test_ids[:num_test_instances]
+    end = start + num_test_instances
+    test_ids = all_test_ids[start:end]
     
     print(f"\nRunning test with:")
     print(f"  - Explanations: {use_explanations}")
@@ -449,7 +447,6 @@ def test_experiment(groups_file: str,
             experiment=experiment,
             prompter=prompter,
             test_id=test_id,
-            prediction_type=prediction_type,
             chain_of_thought=chain_of_thought,
             config=config,
             llm_function=llm
