@@ -30,9 +30,13 @@ class DataLoader:
         
         with open(dev_data_file, 'r') as f:
             self.dev_data = json.load(f)
+
+        with open(dev_data_predictions, 'r') as f:
+            self.dev_data_predictions = json.load(f)
         
-        # Convert string keys to integers for dev_data if needed
+
         self.dev_data = {int(k): v for k, v in self.dev_data.items()}
+        self.dev_data_predictions = {int(k): v for k, v in self.dev_data_predictions.items()}
         
         print(f"Loaded {len(self.groups)} test instances")
         print(f"Loaded {len(self.dev_data)} dev instances")
@@ -48,6 +52,10 @@ class DataLoader:
     def get_dev_predictions(self, test_id: str) -> List[int]:
         """Get the predictions for the dev group (useful for verification)"""
         return self.groups[test_id]["dev_predictions"]
+
+    def get_dev_instance_prediction(self, dev_id):
+        """Get the predictions for the current dev_instance"""
+        return self.dev_data_predictions[dev_id]['prediction']
     
     def get_dev_instance(self,
                         dev_id: int, 
@@ -65,11 +73,12 @@ class DataLoader:
             Dictionary with 'sample', 'prediction', and optionally 'explanation'
         """
         dev_instance = self.dev_data[dev_id]
+        dev_prediction = self.dev_data_predictions[dev_id]['prediction']
 
 
-        if dev_prediction['prediction'] == 0:
+        if dev_prediction == 0:
             prediction = 'NEGATIVE'
-        elif dev_prediction['prediction'] == 1:
+        elif dev_prediction == 1:
             prediction = 'POSITIVE'
          
         
@@ -126,7 +135,7 @@ class LLMPrompter:
     """
 
     PROMPT_TEMPLATE = """###Task Description:
-    You are given 4 examples of movie reviews with the predictions made by a sentiment classification model. The predictions are NEGATIVE or POSITIVE. {explanation_desc}
+    You are given 4 examples of movie reviews with the predictions made by a sentiment classification model. The predictions are {pred_order}. {explanation_desc}
     Your task is to analyze the model's behavior pattern and predict what the model would output for a new test review.
 
     ###Examples from the model:
@@ -142,7 +151,7 @@ class LLMPrompter:
     """
 
     
-    def __init__(self, experiment: DataLoader):
+    def __init__(self, experiment: DataLoader, pred_order):
         """
         Initialize with an experiment instance.
         
@@ -150,6 +159,7 @@ class LLMPrompter:
             experiment: DataLoader instance with loaded data
         """
         self.experiment = experiment
+        self.pred_order = pred_order
     
 
     def create_prompt(
@@ -164,6 +174,10 @@ class LLMPrompter:
             base_prompt: same prompt, but without dev examples and test instance
         """
 
+        if self.pred_order == 'pos_neg':
+            pred_order_str = "'POSITIVE' or 'NEGATIVE'"
+        elif self.pred_order == 'neg_pos':
+            pred_order_str = "'NEGATIVE' or 'POSITIVE'"  
 
         # Explanation description
         explanation_desc = ""
@@ -176,15 +190,15 @@ class LLMPrompter:
         if chain_of_thought:
 
             answer_section = (
-                "###Instructions:\n"
-                "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
-                "###Answer:\n"
-                "Reasoning: [Your reasoning here]\n"
-                "Prediction: [POSITIVE or NEGATIVE]"
+                # "###Instructions:\n"
+                # "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
+                f"###Answer (please briefly explain why your answer is {pred_order_str}):"
+                # "Reasoning: [Your reasoning here]\n"
+                # "Prediction: [POSITIVE or NEGATIVE]"
             )
         else:
             answer_section = (
-                "###Answer (reply only with 'NEGATIVE' or 'POSITIVE'):"
+                f"###Answer (reply only with {pred_order_str}):"
             )
 
         # Instance-specific content
@@ -193,7 +207,7 @@ class LLMPrompter:
 
         # Full prompt
         full_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
-            prediction_desc=prediction_desc,
+            pred_order=pred_order_str,
             explanation_desc=explanation_desc,
             dev_examples=dev_examples,
             test_instance=test_instance,
@@ -202,7 +216,7 @@ class LLMPrompter:
 
         # Base prompt (without examples & test instance)
         base_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
-            prediction_desc=prediction_desc,
+            pred_order=pred_order_str,
             explanation_desc=explanation_desc,
             dev_examples="[DEV_EXAMPLES]",
             test_instance="[TEST_INSTANCE]",
@@ -392,7 +406,9 @@ class PrometheusLLM:
 
 def test_experiment(groups_file: str, 
                    dev_data_file: str,
+                   dev_data_predictions: str,
                    num_test_instances: int,
+                   pred_order: str,
                    chain_of_thought: bool,
                    start: int = 0,
                    explanation_format: str = "text_labels",
@@ -413,8 +429,8 @@ def test_experiment(groups_file: str,
     """
     # Initialize experiment
     print("Initializing experiment...")
-    experiment = DataLoader(groups_file, dev_data_file)
-    prompter = LLMPrompter(experiment)
+    experiment = DataLoader(groups_file, dev_data_file, dev_data_predictions)
+    prompter = LLMPrompter(experiment, pred_order)
     
     # Initialize LLM
     print("\nInitializing LLM...")
