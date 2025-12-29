@@ -23,6 +23,9 @@ def main():
                         type=str,
                         choices=["pos_neg", "neg_pos"],  
                         required=True)
+    parser.add_argument("--max_new_tokens",
+                        type=int,
+                        required=True)
     args = parser.parse_args()
 
     
@@ -51,7 +54,9 @@ def main():
         chain_of_thought=args.chain_of_thought,
         use_explanations=False if args.explanation_format == 'baseline' else True,
         explanation_format=f"{args.explanation_format}",
-        output_file=output_file
+        output_file=output_file,
+        model_name="Unbabel/M-Prometheus-3B",
+        max_new_tokens=args.max_new_tokens
     )
 
 

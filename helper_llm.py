@@ -3,6 +3,7 @@ from tqdm import tqdm
 from typing import Dict, List, Literal, Optional
 from dataclasses import dataclass
 import torch
+import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 @dataclass
@@ -192,7 +193,7 @@ class LLMPrompter:
             answer_section = (
                 # "###Instructions:\n"
                 # "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
-                f"###Answer (please briefly explain why your answer is {pred_order_str}):"
+                f"###Answer (explain in 2-3 sentences why your answer is {pred_order_str}):"
                 # "Reasoning: [Your reasoning here]\n"
                 # "Prediction: [POSITIVE or NEGATIVE]"
             )
@@ -243,10 +244,19 @@ class LLMPrompter:
         
         response = response.strip().strip('"\'.,!?')
 
+        positive = 'positive'
+        negative = 'negative'
+        positive_count = response.count(positive)
+        negative_count = response.count(negative)
+
         if 'NEGATIVE' in response:
             return 0
         elif 'POSITIVE' in response:
             return 1
+        elif positive_count > negative_count:
+            return 1
+        elif negative_count > positive_count:
+            return 0
         
 
 
@@ -302,9 +312,10 @@ class PrometheusLLM:
     Always runs on CUDA.
     """
     
-    def __init__(self, model_name: str = "Unbabel/M-Prometheus-3B", 
-                 max_new_tokens: int = 512,
-                 temperature: float = 0.1):
+    def __init__(self,
+                max_new_tokens: int,
+                model_name: str = "Unbabel/M-Prometheus-3B", 
+                temperature: float = 0.1):
         """
         Initialize the Prometheus model.
         
@@ -410,11 +421,12 @@ def test_experiment(groups_file: str,
                    num_test_instances: int,
                    pred_order: str,
                    chain_of_thought: bool,
-                   start: int = 0,
-                   explanation_format: str = "text_labels",
-                   use_explanations: bool = True,
-                   output_file: str = "test_results.json",
-                   model_name: str = "Unbabel/M-Prometheus-3B"):
+                   start: int,
+                   explanation_format: str,
+                   use_explanations: bool,
+                   output_file: str,
+                   max_new_tokens: int,
+                   model_name: str):
     """
     Test the experiment on a limited number of instances.
     
@@ -434,7 +446,7 @@ def test_experiment(groups_file: str,
     
     # Initialize LLM
     print("\nInitializing LLM...")
-    llm = PrometheusLLM(model_name=model_name)
+    llm = PrometheusLLM(max_new_tokens=max_new_tokens, model_name=model_name)
     
     # Create config
     config = DataConfig(
@@ -455,6 +467,10 @@ def test_experiment(groups_file: str,
     
     # Store results
     results = []
+
+    if os.path.exists(output_file):
+        with open(output_file, 'r') as f:
+            results = json.load(f)
     
     # Run predictions for each test instance
     for i, test_id in enumerate(tqdm(test_ids, desc="Processing"), 1):
@@ -469,16 +485,18 @@ def test_experiment(groups_file: str,
         )
         
         results.append(result)
-        
-        
+
+        with open(output_file, 'w') as f:
+            json.dump(results, f, indent=4)
+             
         # Clear cache to ensure independence
         llm.clear_cache()
             
     
     # Save results
     print(f"\n\nSaving results to {output_file}...")
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
+    # with open(output_file, 'w') as f:
+    #     json.dump(results, f, indent=2)
     
     # Print summary
     successful = [r for r in results if 'predicted_label_LLM' in r and r['predicted_label_LLM'] is not None]
