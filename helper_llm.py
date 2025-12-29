@@ -130,7 +130,7 @@ class DataLoader:
         return list(self.groups.keys())
 
 
-class LLMPrompter:
+class LLMPrompter_single:
     """
     Handles prompting the LLM to predict what the classification model would output.
     """
@@ -191,11 +191,7 @@ class LLMPrompter:
         if chain_of_thought:
 
             answer_section = (
-                # "###Instructions:\n"
-                # "First, briefly explain your reasoning. Then provide your final prediction.\n\n"
                 f"###Answer (explain in 2-3 sentences why your answer is {pred_order_str}):"
-                # "Reasoning: [Your reasoning here]\n"
-                # "Prediction: [POSITIVE or NEGATIVE]"
             )
         else:
             answer_section = (
@@ -207,7 +203,7 @@ class LLMPrompter:
         test_instance = self.experiment.get_test_instance(test_id)
 
         # Full prompt
-        full_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
+        full_prompt = LLMPrompter_single.PROMPT_TEMPLATE.format(
             pred_order=pred_order_str,
             explanation_desc=explanation_desc,
             dev_examples=dev_examples,
@@ -216,7 +212,7 @@ class LLMPrompter:
         )
 
         # Base prompt (without examples & test instance)
-        base_prompt = LLMPrompter.PROMPT_TEMPLATE.format(
+        base_prompt = LLMPrompter_single.PROMPT_TEMPLATE.format(
             pred_order=pred_order_str,
             explanation_desc=explanation_desc,
             dev_examples="[DEV_EXAMPLES]",
@@ -257,12 +253,153 @@ class LLMPrompter:
             return 1
         elif negative_count > positive_count:
             return 0
+
+
+class LLMPrompter_pairwise:
+    """
+    Handles prompting the LLM to predict what the classification model would output.
+    """
+
+    PROMPT_TEMPLATE = """###Task Description:
+    You are given 4 examples showing how a classification model behaves on movie reviews. Each example shows:
+    - A movie review
+    - The model's prediction (POSITIVE or NEGATIVE)
+    {explanation_desc}
+    
+    Your task is to:
+    1. Analyze the model's behavior pattern from these 4 examples
+    2. Predict how the model would classify a new test review
+    3. Choose between Response A ({labels[0]}) or Response B ({labels[1]})
+    
+    The output format should look as follows:
+    {answer_section}
+    
+    Do not generate any additional text, opening, or closing remarks.
+
+    ###INSTRUCTION:
+    {dev_examples}
+
+    TEST INSTANCE:
+    {test_instance}
+
+    Question: Based on the model's behavior in the examples above, what would this classification model predict for the test review?
+
+    ###RESPONSE_A:
+    The model would classify the review as {labels[0]}
+
+    ###RESPONSE_B:
+    The model would classify the review as {labels[1]}
+
+    ###FEEDBACK:
+    """
+
+    
+    def __init__(self, experiment: DataLoader, pred_order):
+        """
+        Initialize with an experiment instance.
+        
+        Args:
+            experiment: DataLoader instance with loaded data
+        """
+        self.experiment = experiment
+        self.pred_order = pred_order
+    
+
+    def create_prompt(
+        self,
+        test_id: str,
+        config: DataConfig,
+        chain_of_thought: bool = False
+    ) -> tuple[str, str]:
+        """
+        Returns:
+            full_prompt: prompt with dev examples and test instance
+            base_prompt: same prompt, but without dev examples and test instance
+        """
+
+        if self.pred_order == 'pos_neg':
+            pred_order_list = ['POSITIVE', 'NEGATIVE']
+        elif self.pred_order == 'neg_pos':
+            pred_order_list = ['NEGATIVE', 'POSITIVE']  
+
+        # Explanation description
+        explanation_desc = ""
+        if config.use_explanations:
+            explanation_desc = (
+                "- An explanation showing which parts of the text influenced the model's decision. "
+            )
+
+        # Answer section
+        if chain_of_thought:
+
+            answer_section = (
+                "Feedback: (write 2-3 sentences on your decision)."
+                "[RESULT] (A or B)"
+            )
+        else:
+            answer_section = (
+                f"[RESULT] (A or B)"
+            )
+
+        # Instance-specific content
+        dev_examples = self.experiment.format_dev_examples(test_id, config)
+        test_instance = self.experiment.get_test_instance(test_id)
+
+        # Full prompt
+        full_prompt = LLMPrompter_pairwise.PROMPT_TEMPLATE.format(
+            labels=pred_order_list,
+            explanation_desc=explanation_desc,
+            dev_examples=dev_examples,
+            test_instance=test_instance,
+            answer_section=answer_section,
+        )
+
+        # Base prompt (without examples & test instance)
+        base_prompt = LLMPrompter_pairwise.PROMPT_TEMPLATE.format(
+            labels=pred_order_list,
+            explanation_desc=explanation_desc,
+            dev_examples="[DEV_EXAMPLES]",
+            test_instance="[TEST_INSTANCE]",
+            answer_section=answer_section,
+        )
+
+        return full_prompt, base_prompt
+
+    
+    def extract_prediction(self, llm_response: str, 
+                          chain_of_thought: bool = False) -> Optional[int]:
+        """
+        Extract the prediction (0 or 1) from the LLM's response.
+        
+        Args:
+            llm_response: The LLM's text response
+            chain_of_thought: Whether the response includes reasoning
+        
+        Returns:
+            Predicted label (0 or 1) or None if extraction failed
+        """
+        response = llm_response.strip()
+        
+        
+        response = response.strip().strip('"\'.,!?')
+
+
+        if 'RESPONSE_A' in response or 'RESPONSE A' in response:
+            if self.pred_order == 'neg_pos':
+                return 0
+            else:
+                return 1
+        elif 'RESPONSE_B' in response or 'RESPONSE B' in response:
+            if self.pred_order == 'pos_neg':
+                return 0
+            else:
+                return 1
         
 
 
 # Example usage function
 def run_single_prediction(experiment: DataLoader, 
-                         prompter: LLMPrompter,
+                         prompter: LLMPrompter_single,
                          test_id: str,
                          chain_of_thought: bool,
                          config: DataConfig,
@@ -442,7 +579,7 @@ def test_experiment(groups_file: str,
     # Initialize experiment
     print("Initializing experiment...")
     experiment = DataLoader(groups_file, dev_data_file, dev_data_predictions)
-    prompter = LLMPrompter(experiment, pred_order)
+    prompter = LLMPrompter_single(experiment, pred_order)
     
     # Initialize LLM
     print("\nInitializing LLM...")
