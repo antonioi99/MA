@@ -4,6 +4,7 @@ from typing import Dict, List, Literal, Optional
 from dataclasses import dataclass
 import torch
 import os
+import re
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 @dataclass
@@ -290,7 +291,7 @@ class LLMPrompter_pairwise:
     ###RESPONSE_B:
     The model would classify the review as {labels[1]}
 
-    ###FEEDBACK:
+    ###ANSWER:
     """
 
     
@@ -333,12 +334,12 @@ class LLMPrompter_pairwise:
         if chain_of_thought:
 
             answer_section = (
-                "Feedback: (write 2-3 sentences on your decision)."
-                "[RESULT] (A or B)"
+                "Feedback: (write maximal 2-3 sentences on your decision)."
+                "RESULT: (A or B)"
             )
         else:
             answer_section = (
-                f"[RESULT] (A or B)"
+                f"(reply only with) RESULT: A or B"
             )
 
         # Instance-specific content
@@ -384,12 +385,12 @@ class LLMPrompter_pairwise:
         response = response.strip().strip('"\'.,!?')
 
 
-        if 'RESPONSE_A' in response or 'RESPONSE A' in response:
+        if 'RESPONSE_A' in response or 'RESPONSE A' in response or re.search(r'(?<!\w)A(?!\w)', response):
             if self.pred_order == 'neg_pos':
                 return 0
             else:
                 return 1
-        elif 'RESPONSE_B' in response or 'RESPONSE B' in response:
+        elif 'RESPONSE_B' in response or 'RESPONSE B' in response or re.search(r'(?<!\w)B(?!\w)', response):
             if self.pred_order == 'pos_neg':
                 return 0
             else:
@@ -399,7 +400,7 @@ class LLMPrompter_pairwise:
 
 # Example usage function
 def run_single_prediction(experiment: DataLoader, 
-                         prompter: LLMPrompter_single,
+                         prompter,
                          test_id: str,
                          chain_of_thought: bool,
                          config: DataConfig,
@@ -563,7 +564,8 @@ def test_experiment(groups_file: str,
                    use_explanations: bool,
                    output_file: str,
                    max_new_tokens: int,
-                   model_name: str):
+                   model_name: str,
+                   llm_prompter: str):
     """
     Test the experiment on a limited number of instances.
     
@@ -579,7 +581,10 @@ def test_experiment(groups_file: str,
     # Initialize experiment
     print("Initializing experiment...")
     experiment = DataLoader(groups_file, dev_data_file, dev_data_predictions)
-    prompter = LLMPrompter_single(experiment, pred_order)
+    if llm_prompter == 'single':
+        prompter = LLMPrompter_single(experiment, pred_order)
+    elif llm_prompter == 'pairwise':
+        prompter = LLMPrompter_pairwise(experiment, pred_order)
     
     # Initialize LLM
     print("\nInitializing LLM...")
