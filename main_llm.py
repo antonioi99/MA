@@ -39,6 +39,8 @@ def main():
         model_name = "Unbabel/M-Prometheus-3B"
     elif args.llm == 'llama':
         model_name = "meta-llama/Llama-3.2-3B-Instruct"
+    elif args.llm == 'gemma':
+        model_name = 'google/gemma-3-1b-it'
         
     
     groups_file = "similarity_groups/similarity_groups.json"
