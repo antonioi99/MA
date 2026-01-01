@@ -29,7 +29,6 @@ def main():
     
         results = helper_analysis.quick_analyze(f'test_results/{subdirectory}/{element}_0_10000.json', 
                                                 'classification_model_predictions/test_set/predictions.json',
-                                                print_results=True,
                                                 save_to=f'{analysis_main_folder}/{subdirectory}/results_{element}.json')
 
 if __name__ == '__main__':

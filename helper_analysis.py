@@ -137,12 +137,16 @@ class PredictionAnalyzer:
                     (confusion['true_positives'] + confusion['false_positives']) 
                     if (confusion['true_positives'] + confusion['false_positives']) > 0 else 0)
         
-        recall = (confusion['true_positives'] / 
+        recall_TPR = (confusion['true_positives'] / 
                  (confusion['true_positives'] + confusion['false_negatives'])
                  if (confusion['true_positives'] + confusion['false_negatives']) > 0 else 0)
+
+        recall_TNR = (confusion['true_negatives'] / 
+                (confusion['true_negatives'] + confusion['false_positives'])
+                if (confusion['true_negatives'] + confusion['false_positives']) > 0 else 0)
         
-        f1_score = (2 * precision * recall / (precision + recall) 
-                   if (precision + recall) > 0 else 0)
+        f1_score = (2 * precision * recall_TPR / (precision + recall_TPR) 
+                   if (precision + recall_TPR) > 0 else 0)
         
         self.results = {
             'accuracy': accuracy,
@@ -152,7 +156,8 @@ class PredictionAnalyzer:
             'incorrect_predictions': total - matches,
             'confusion_matrix': confusion,
             'precision': precision,
-            'recall': recall,
+            'recall_TPR': recall_TPR,
+            'recall_TNR': recall_TNR,
             'f1_score': f1_score,
             'mismatches': mismatches,
             'missing_in_llm': len(set(self.original_predictions.keys()) - set(self.llm_predictions.keys())),
@@ -160,58 +165,7 @@ class PredictionAnalyzer:
         }
         
         return self
-    
-    def get_results(self) -> Dict:
-        """
-        Get the analysis results.
-        
-        Returns:
-            Dictionary containing analysis results
-            
-        Raises:
-            ValueError: If calculate_accuracy hasn't been called yet
-        """
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results
-    
-    def print_results(self, max_mismatches: int = 10):
-        """
-        Print the analysis results in a readable format.
-        
-        Args:
-            max_mismatches: Maximum number of mismatches to display
-        """
-        if self.results is None:
-            print("No results available. Call calculate_accuracy() first.")
-            return
-        
-        print("=" * 60)
-        print("PREDICTION ACCURACY ANALYSIS")
-        print("=" * 60)
-        
-        if 'error' in self.results:
-            print(f"\nERROR: {self.results['error']}")
-            print(f"LLM predictions count: {self.results['llm_count']}")
-            print(f"Original predictions count: {self.results['original_count']}")
-            return
-        
-        print(f"\n Overall Accuracy: {self.results['accuracy']:.4f} ({self.results['accuracy_percentage']:.2f}%)")
-        print(f" Correct predictions: {self.results['correct_predictions']}/{self.results['total_compared']}")
-        print(f" Incorrect predictions: {self.results['incorrect_predictions']}/{self.results['total_compared']}")
-        
-        print("\n Detailed Metrics:")
-        print(f"  Precision: {self.results['precision']:.4f}")
-        print(f"  Recall: {self.results['recall']:.4f}")
-        print(f"  F1 Score: {self.results['f1_score']:.4f}")
-        
-        print("\n Confusion Matrix:")
-        cm = self.results['confusion_matrix']
-        print(f"  True Positives (both 1):  {cm['true_positives']}")
-        print(f"  True Negatives (both 0):  {cm['true_negatives']}")
-        print(f"  False Positives (LLM=1, Original=0): {cm['false_positives']}")
-        print(f"  False Negatives (LLM=0, Original=1): {cm['false_negatives']}")
-        
+
         
     def save_results(self, filepath: str):
         """
@@ -230,61 +184,8 @@ class PredictionAnalyzer:
             json.dump(self.results, f, indent=2)
         print(f" Results saved to '{filepath}'")
     
-    def get_accuracy(self) -> float:
-        """Get the overall accuracy score."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('accuracy', 0.0)
     
-    def get_precision(self) -> float:
-        """Get the precision score."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('precision', 0.0)
-    
-    def get_recall(self) -> float:
-        """Get the recall score."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('recall', 0.0)
-    
-    def get_f1_score(self) -> float:
-        """Get the F1 score."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('f1_score', 0.0)
-    
-    def get_confusion_matrix(self) -> Dict[str, int]:
-        """Get the confusion matrix."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('confusion_matrix', {})
-    
-    def get_mismatches(self) -> List[Dict]:
-        """Get list of mismatched predictions."""
-        if self.results is None:
-            raise ValueError("No results available. Call calculate_accuracy() first.")
-        return self.results.get('mismatches', [])
-    
-    @classmethod
-    def from_files(cls, llm_file: str, original_file: str) -> 'PredictionAnalyzer':
-        """
-        Create a PredictionAnalyzer instance and load predictions from files.
-        
-        Args:
-            llm_file: Path to JSON file with LLM predictions
-            original_file: Path to JSON file with original predictions
-            
-        Returns:
-            PredictionAnalyzer instance with loaded predictions
-        """
-        analyzer = cls()
-        analyzer.load_llm_predictions_from_file(llm_file)
-        analyzer.load_original_predictions_from_file(original_file)
-        return analyzer
-    
-    def analyze(self, llm_file: str, original_file: str, 
-                print_output: bool = True, 
+    def analyze(self, llm_file: str, original_file: str,
                 save_to: Optional[str] = None) -> Dict:
         """
         Complete analysis pipeline: load files, calculate metrics, and optionally print/save.
@@ -302,8 +203,6 @@ class PredictionAnalyzer:
         self.load_original_predictions_from_file(original_file)
         self.calculate_accuracy()
         
-        if print_output:
-            self.print_results()
         
         if save_to:
             self.save_results(save_to)
@@ -315,21 +214,10 @@ class PredictionAnalyzer:
         self.llm_predictions = {}
         self.original_predictions = {}
         self.results = None
-    
-    def __repr__(self) -> str:
-        """String representation of the PredictionAnalyzer."""
-        llm_count = len(self.llm_predictions)
-        orig_count = len(self.original_predictions)
-        has_results = self.results is not None
-        
-        return (f"PredictionAnalyzer(llm_predictions={llm_count}, "
-                f"original_predictions={orig_count}, "
-                f"analyzed={has_results})")
 
 
 # Convenience function for quick analysis
 def quick_analyze(llm_file: str, original_file: str, 
-                  print_results: bool = True,
                   save_to: Optional[str] = None) -> Dict:
     """
     Quick analysis function for one-line usage.
@@ -337,11 +225,10 @@ def quick_analyze(llm_file: str, original_file: str,
     Args:
         llm_file: Path to JSON file with LLM predictions
         original_file: Path to JSON file with original predictions
-        print_results: Whether to print results to console
         save_to: Optional path to save results as JSON
         
     Returns:
         Dictionary with analysis results
     """
     analyzer = PredictionAnalyzer()
-    return analyzer.analyze(llm_file, original_file, print_results, save_to)
+    return analyzer.analyze(llm_file, original_file, save_to)
