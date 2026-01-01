@@ -149,16 +149,15 @@ class PredictionAnalyzer:
                    if (precision + recall_TPR) > 0 else 0)
         
         self.results = {
-            'accuracy': accuracy,
-            'accuracy_percentage': accuracy * 100,
+            'accuracy': round(accuracy, 4),
             'total_compared': total,
             'correct_predictions': matches,
             'incorrect_predictions': total - matches,
             'confusion_matrix': confusion,
-            'precision': precision,
-            'recall_TPR': recall_TPR,
-            'recall_TNR': recall_TNR,
-            'f1_score': f1_score,
+            'precision': round(precision, 4),
+            'recall_TPR': round(recall_TPR, 4),
+            'recall_TNR': round(recall_TNR, 4),
+            'f1_score': round(f1_score, 4),
             'mismatches': mismatches,
             'missing_in_llm': len(set(self.original_predictions.keys()) - set(self.llm_predictions.keys())),
             'missing_in_original': len(set(self.llm_predictions.keys()) - set(self.original_predictions.keys()))
