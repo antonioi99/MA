@@ -37,7 +37,9 @@ def main():
 
     if args.llm == 'prometheus':
         model_name = "Unbabel/M-Prometheus-3B"
-        prompt_folder = f'{args.prompter}'
+    elif args.llm == 'llama':
+        model_name = "meta-llama/Llama-3.2-3B-Instruct"
+        
     
     groups_file = "similarity_groups/similarity_groups.json"
     dev_data_file = "explanations4NLP/merged_data/merged_data.json"
@@ -45,6 +47,7 @@ def main():
         
     main_folder = 'test_results'
     model_folder = f'{args.llm}'
+    prompt_folder = f'{args.prompter}'
     chain_of_thought_folder = f'chain_of_thought_True' if args.chain_of_thought else 'no_chain_of_thought'
     pred_order_folder = args.pred_order
 

@@ -7,6 +7,20 @@ import os
 import re
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+
+def load_env_file(filepath='.env'):
+    """Manually load environment variables from .env file"""
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+
+load_env_file()
+
 @dataclass
 class DataConfig:
     """Configuration for the experiment"""
@@ -246,7 +260,14 @@ class LLMPrompter_single:
         positive_count = response.count(positive)
         negative_count = response.count(negative)
 
-        if 'NEGATIVE' in response:
+        # Find first occurrence of each (case-sensitive uppercase)
+        first_positive = response.find('POSITIVE')
+        first_negative = response.find('NEGATIVE')
+    
+        # Both found - use whichever appears first
+        if first_positive != -1 and first_negative != -1:
+            return 1 if first_positive < first_negative else 0
+        elif 'NEGATIVE' in response:
             return 0
         elif 'POSITIVE' in response:
             return 1
@@ -444,15 +465,15 @@ def run_single_prediction(experiment: DataLoader,
     }
 
 
-class PrometheusLLM:
+class LLMInference:
     """
-    Wrapper for the Prometheus model to generate predictions.
+    Wrapper for the LLM to generate predictions.
     Always runs on CUDA.
     """
     
     def __init__(self,
                 max_new_tokens: int,
-                model_name: str = "Unbabel/M-Prometheus-3B", 
+                model_name: str, 
                 temperature: float = 0.1):
         """
         Initialize the Prometheus model.
@@ -470,12 +491,15 @@ class PrometheusLLM:
         
         self.device = "cuda"
         print(f"Using device: {self.device}")
+
+        hf_token = os.getenv("HF_TOKEN")
         
         # Load tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            dtype=torch.float16
+            dtype=torch.float16,
+            token=hf_token
         ).to(self.device)
 
         
@@ -588,7 +612,7 @@ def test_experiment(groups_file: str,
     
     # Initialize LLM
     print("\nInitializing LLM...")
-    llm = PrometheusLLM(max_new_tokens=max_new_tokens, model_name=model_name)
+    llm = LLMInference(max_new_tokens=max_new_tokens, model_name=model_name)
     
     # Create config
     config = DataConfig(
