@@ -39,8 +39,8 @@ def main():
         model_name = "Unbabel/M-Prometheus-3B"
     elif args.llm == 'llama':
         model_name = "meta-llama/Llama-3.2-3B-Instruct"
-    elif args.llm == 'gemma':
-        model_name = 'google/gemma-3-1b-it'
+    elif args.llm == 'qwen':
+        model_name = 'Qwen/Qwen3-4B-Instruct-2507'
         
     
     groups_file = "similarity_groups/similarity_groups.json"
@@ -56,8 +56,8 @@ def main():
     dir_results = f'{main_folder}/{model_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
     os.makedirs(dir_results, exist_ok=True)
 
-    end = args.start + args.data_size
-    output_file = f'{dir_results}/{args.explanation_format}_{args.start}_{end}.json'  
+    # end = args.start + args.data_size
+    output_file = f'{dir_results}/{args.explanation_format}.json'  
 
 
     results = helper_llm.test_experiment(
