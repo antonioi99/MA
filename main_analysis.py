@@ -1,35 +1,36 @@
-import helper_analysis
+from itertools import product
 import os
-import argparse
+from helper_analysis import McNemarAnalyzer, quick_analyze
 
 def main():
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--chain_of_thought",
-			action ="store_true")
-    parser.add_argument("--pred_order",
-			type=str,
-			choices=["pos_neg", "neg_pos"],
-			required=True)
-    parser.add_argument("--llm",
-                        type=str,
-                        required=True)
-    parser.add_argument("--prompter",
-                        type=str,
-                        required=False)
-
-    args = parser.parse_args()
-
     analysis_main_folder = 'analysis'
-    chain_of_thought_folder = 'chain_of_thought_True' if args.chain_of_thought else 'no_chain_of_thought'
-    subdirectory = f"{args.llm}/{args.prompter}/{chain_of_thought_folder}/{args.pred_order}"
-    os.makedirs(f"{analysis_main_folder}/{subdirectory}", exist_ok=True)
 
-    for element in ["baseline", "text_scores", "text_labels", "structured_text_scores", "structured_text_labels", "top_words_scores", "top_words_labels", "natural_words", "part_of_speech"]:
-    
-        results = helper_analysis.quick_analyze(f'test_results/{subdirectory}/{element}_0_10000.json', 
-                                                'classification_model_predictions/test_set/predictions.json',
-                                                save_to=f'{analysis_main_folder}/{subdirectory}/results_{element}.json')
+    CoT = ['chain_of_thought_True', 'no_chain_of_thought']
+    pred_order = ['pos_neg', 'neg_pos']
+    prompter = ['single', 'pairwise']
+    llm = ['prometheus', 'qwen', 'llama']
+    explanation_formats = ["baseline", "text_scores", "text_labels", "structured_text_scores", 
+                           "structured_text_labels", "top_words_scores", "top_words_labels", 
+                           "natural_words", "part_of_speech"]
+
+    for cot, order, prompt, model, exp_format in product(CoT, pred_order, prompter, llm, explanation_formats):
+        subdirectory = f"{model}/{prompt}/{cot}/{order}"
+        os.makedirs(f"{analysis_main_folder}/{subdirectory}", exist_ok=True)
+
+        try:
+            quick_analyze(f'test_results/{subdirectory}/{exp_format}.json', 
+                                          'classification_model_predictions/test_set/predictions.json',
+                                          save_to=f'{analysis_main_folder}/{subdirectory}/results_{exp_format}.json')
+        except FileNotFoundError:
+            print(f"Skipping: {subdirectory}/{exp_format}.json (file not found)")
+            continue
+
+
+    analyzer = McNemarAnalyzer(base_path="analysis")
+    analyzer.analyze_and_save_all()
+    analyzer.latex_tables = []
+    analyzer.analyze_and_save_all_aggregated()
 
 if __name__ == '__main__':
     main()
