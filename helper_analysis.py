@@ -106,10 +106,13 @@ class PredictionAnalyzer:
             }
             return self
         
+        # FIXED: Sort common_ids to ensure consistent ordering
+        sorted_common_ids = sorted(common_ids)
+        
         # Calculate matches
-        matches = sum(1 for tid in common_ids 
+        matches = sum(1 for tid in sorted_common_ids 
                       if self.llm_predictions[tid] == self.original_predictions[tid])
-        total = len(common_ids)
+        total = len(sorted_common_ids)
         accuracy = matches / total if total > 0 else 0
         
         # Detailed breakdown
@@ -121,7 +124,7 @@ class PredictionAnalyzer:
         }
         
         mismatches = []
-        for tid in common_ids:
+        for tid in sorted_common_ids:
             llm_pred = self.llm_predictions[tid]
             orig_pred = self.original_predictions[tid]
             
@@ -164,7 +167,8 @@ class PredictionAnalyzer:
             'f1_score': round(f1_score, 4),
             'mismatches': mismatches,
             'missing_in_llm': len(set(self.original_predictions.keys()) - set(self.llm_predictions.keys())),
-            'missing_in_original': len(set(self.llm_predictions.keys()) - set(self.original_predictions.keys()))
+            'missing_in_original': len(set(self.llm_predictions.keys()) - set(self.original_predictions.keys())),
+            'test_ids_ordered': sorted_common_ids  # FIXED: Store ordered test_ids
         }
         
         return self
@@ -289,90 +293,103 @@ class McNemarAnalyzer:
         
         return self.results_cache[cache_key]
     
-    def get_correctness_arrays(self, config: ExperimentConfig, format_name: str) -> tuple:
+    def get_correctness_arrays(self, config: ExperimentConfig, format_name: str) -> np.ndarray:
         """
-        Extract correctness array and valid indices from results JSON
-        
-        Returns:
-            tuple: (correct_dict, valid_indices)
+        FIXED: Extract correctness array (True/False for each test example)
+        from results JSON using the stored ordered test_ids
         """
         results = self.load_results(config, format_name)
         
-        n_total = results['total_compared']
-        incorrect_ids = {m['test_id'] for m in results['mismatches']}
-        
-        # Assume test_ids are strings from "0" to some max
-        # Find the maximum test_id mentioned
-        if incorrect_ids:
-            max_id = max(int(tid) for tid in incorrect_ids)
+        # FIXED: Check if test_ids_ordered exists in the results
+        if 'test_ids_ordered' not in results:
+            # Fallback for old format - try to reconstruct
+            print(f"WARNING: 'test_ids_ordered' not found in {format_name}. Using fallback method.")
+            n_total = results['total_compared']
+            incorrect_ids = set(m['test_id'] for m in results['mismatches'])
+            
+            # Try to infer test_ids from mismatches (this is a guess!)
+            # This assumes test_ids are strings like "0", "1", "2", etc.
+            correct = np.array([str(i) not in incorrect_ids for i in range(n_total)])
+            
+            calculated_correct = correct.sum()
+            expected_correct = results['correct_predictions']
+            
+            if calculated_correct != expected_correct:
+                raise AssertionError(
+                    f"Mismatch in correct count for {format_name}: "
+                    f"calculated {calculated_correct}, expected {expected_correct}. "
+                    f"Please regenerate results files with the fixed PredictionAnalyzer."
+                )
         else:
-            max_id = n_total - 1
+            # NEW: Use the stored ordered test_ids
+            test_ids_ordered = results['test_ids_ordered']
+            incorrect_ids = set(m['test_id'] for m in results['mismatches'])
+            
+            # Create boolean array based on actual test_ids
+            correct = np.array([tid not in incorrect_ids for tid in test_ids_ordered])
+            
+            # Verify
+            assert correct.sum() == results['correct_predictions'], \
+                f"Mismatch in correct count for {format_name}"
         
-        # Assume the first n_total sequential IDs starting from 0 were compared
-        # (adjusting for any gaps)
-        valid_indices = set()
-        correct_dict = {}
+        return correct
+    
+    def get_correctness_arrays_with_common_ids(self, config: ExperimentConfig, 
+                                                baseline_format: str, 
+                                                test_format: str) -> tuple:
+        """
+        Get correctness arrays for baseline and test formats, filtered to common test_ids.
         
-        # Start from 0 and collect until we have n_total predictions
-        count = 0
-        test_id = 0
-        while count < n_total:
-            tid_str = str(test_id)
-            if tid_str in incorrect_ids:
-                correct_dict[tid_str] = False
-                valid_indices.add(tid_str)
-                count += 1
-            else:
-                # Might be correct, or might not exist
-                # We'll tentatively mark it as correct
-                correct_dict[tid_str] = True
-                valid_indices.add(tid_str)
-                count += 1
-            test_id += 1
+        Returns:
+            tuple: (correct_baseline, correct_test, common_test_ids)
+        """
+        baseline_results = self.load_results(config, baseline_format)
+        test_results = self.load_results(config, test_format)
         
-        # Verify
-        n_correct_calculated = sum(1 for v in correct_dict.values() if v)
-        print(f"Format: {format_name}")
-        print(f"Expected correct: {results['correct_predictions']}")
-        print(f"Calculated correct: {correct.sum()}")
-        print(f"Sample test_ids from mismatches: {list(incorrect_ids)[:5]}")
-        print(f"Sample generated IDs: {[str(i) for i in range(5)]}")
-        assert n_correct_calculated == results['correct_predictions'], \
-            f"Mismatch in correct count for {format_name}: calculated {n_correct_calculated}, expected {results['correct_predictions']}"
+        # Get test_ids from both formats
+        baseline_test_ids = baseline_results.get('test_ids_ordered', [])
+        test_test_ids = test_results.get('test_ids_ordered', [])
         
-        return correct_dict, valid_indices
-
+        if not baseline_test_ids or not test_test_ids:
+            raise ValueError(f"Both {baseline_format} and {test_format} must have test_ids_ordered")
+        
+        # Find common test_ids (preserving order from baseline)
+        test_test_ids_set = set(test_test_ids)
+        common_test_ids = [tid for tid in baseline_test_ids if tid in test_test_ids_set]
+        
+        if not common_test_ids:
+            raise ValueError(f"No common test_ids between {baseline_format} and {test_format}")
+        
+        # Get incorrect IDs for both formats
+        baseline_incorrect = set(m['test_id'] for m in baseline_results['mismatches'])
+        test_incorrect = set(m['test_id'] for m in test_results['mismatches'])
+        
+        # Create correctness arrays for common test_ids only
+        correct_baseline = np.array([tid not in baseline_incorrect for tid in common_test_ids])
+        correct_test = np.array([tid not in test_incorrect for tid in common_test_ids])
+        
+        return correct_baseline, correct_test, common_test_ids
+    
     def compare_formats(self, config: ExperimentConfig, 
-                    baseline_format: str, 
-                    test_format: str) -> Dict:
+                       baseline_format: str, 
+                       test_format: str) -> Dict:
         """
         Compare two formats using McNemar's test
-        Only considers examples with valid predictions in BOTH formats
+        Uses only common test_ids between the two formats.
         
         Returns:
             Dictionary with accuracy metrics and test results
         """
-        # Get correctness arrays and valid indices
-        correct_baseline, valid_baseline = self.get_correctness_arrays(config, baseline_format)
-        correct_test, valid_test = self.get_correctness_arrays(config, test_format)
+        # Get correctness arrays filtered to common test_ids
+        correct_baseline, correct_test, common_test_ids = \
+            self.get_correctness_arrays_with_common_ids(config, baseline_format, test_format)
         
-        # Find intersection: only examples with valid predictions in BOTH formats
-        valid_both = valid_baseline & valid_test
-        valid_indices = sorted(list(valid_both))
-        
-        if len(valid_indices) == 0:
-            raise ValueError(f"No overlapping valid predictions between {baseline_format} and {test_format}")
-        
-        # Extract only the valid examples
-        correct_baseline_filtered = np.array([correct_baseline[i] for i in valid_indices])
-        correct_test_filtered = np.array([correct_test[i] for i in valid_indices])
-        
-        n_total = len(valid_indices)
+        n_total = len(common_test_ids)
         
         # Create contingency table
         contingency_data = pd.DataFrame({
-            'baseline': correct_baseline_filtered,
-            'test': correct_test_filtered
+            'baseline': correct_baseline,
+            'test': correct_test
         })
         
         contingency_table = SquareTable.from_data(contingency_data)
@@ -401,9 +418,6 @@ class McNemarAnalyzer:
             'baseline_format': baseline_format,
             'test_format': test_format,
             'n_total': n_total,
-            'n_valid_baseline': len(valid_baseline),
-            'n_valid_test': len(valid_test),
-            'n_valid_both': len(valid_both),
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
@@ -660,8 +674,8 @@ class McNemarAnalyzer:
                                 baseline_format: str, test_format: str) -> Dict:
         """
         Compare two formats using McNemar's test with aggregated contingency tables
-        across both prompting strategies (pos_neg and neg_pos)
-        Only considers examples with valid predictions in BOTH formats
+        across both prompting strategies (pos_neg and neg_pos).
+        Uses only common test_ids between formats.
         
         Args:
             llm: LLM name
@@ -677,47 +691,37 @@ class McNemarAnalyzer:
         config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg')
         config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos')
         
-        # Get correctness arrays and valid indices for both prompting strategies
-        correct_baseline_pos_neg, valid_baseline_pos_neg = self.get_correctness_arrays(config_pos_neg, baseline_format)
-        correct_test_pos_neg, valid_test_pos_neg = self.get_correctness_arrays(config_pos_neg, test_format)
+        # Get correctness arrays for both prompting strategies (filtered to common IDs)
+        correct_baseline_pos_neg, correct_test_pos_neg, common_ids_pos_neg = \
+            self.get_correctness_arrays_with_common_ids(config_pos_neg, baseline_format, test_format)
         
-        correct_baseline_neg_pos, valid_baseline_neg_pos = self.get_correctness_arrays(config_neg_pos, baseline_format)
-        correct_test_neg_pos, valid_test_neg_pos = self.get_correctness_arrays(config_neg_pos, test_format)
-        
-        # Find valid indices for each configuration
-        valid_both_pos_neg = valid_baseline_pos_neg & valid_test_pos_neg
-        valid_both_neg_pos = valid_baseline_neg_pos & valid_test_neg_pos
-        
-        valid_indices_pos_neg = sorted(list(valid_both_pos_neg))
-        valid_indices_neg_pos = sorted(list(valid_both_neg_pos))
-        
-        # Filter to only valid examples
-        correct_baseline_pos_neg_filtered = np.array([correct_baseline_pos_neg[i] for i in valid_indices_pos_neg])
-        correct_test_pos_neg_filtered = np.array([correct_test_pos_neg[i] for i in valid_indices_pos_neg])
-        
-        correct_baseline_neg_pos_filtered = np.array([correct_baseline_neg_pos[i] for i in valid_indices_neg_pos])
-        correct_test_neg_pos_filtered = np.array([correct_test_neg_pos[i] for i in valid_indices_neg_pos])
+        correct_baseline_neg_pos, correct_test_neg_pos, common_ids_neg_pos = \
+            self.get_correctness_arrays_with_common_ids(config_neg_pos, baseline_format, test_format)
         
         # Create contingency tables for both
         contingency_data_pos_neg = pd.DataFrame({
-            'baseline': correct_baseline_pos_neg_filtered,
-            'test': correct_test_pos_neg_filtered
+            'baseline': correct_baseline_pos_neg,
+            'test': correct_test_pos_neg
         })
         contingency_table_pos_neg = SquareTable.from_data(contingency_data_pos_neg)
         table_pos_neg = contingency_table_pos_neg.table
         
         contingency_data_neg_pos = pd.DataFrame({
-            'baseline': correct_baseline_neg_pos_filtered,
-            'test': correct_test_neg_pos_filtered
+            'baseline': correct_baseline_neg_pos,
+            'test': correct_test_neg_pos
         })
         contingency_table_neg_pos = SquareTable.from_data(contingency_data_neg_pos)
         table_neg_pos = contingency_table_neg_pos.table
         
         # Average the contingency table cells (a, b, c, d)
-        both_wrong = (table_pos_neg[0, 0] + table_neg_pos[0, 0]) / 2
-        got_worse = (table_pos_neg[1, 0] + table_neg_pos[1, 0]) / 2
-        got_better = (table_pos_neg[0, 1] + table_neg_pos[0, 1]) / 2
-        both_correct = (table_pos_neg[1, 1] + table_neg_pos[1, 1]) / 2
+        # table format:
+        #           test_False  test_True
+        # base_False    a          c
+        # base_True     b          d
+        both_wrong = (table_pos_neg[0, 0] + table_neg_pos[0, 0]) / 2  # a
+        got_worse = (table_pos_neg[1, 0] + table_neg_pos[1, 0]) / 2   # b (baseline correct, test wrong)
+        got_better = (table_pos_neg[0, 1] + table_neg_pos[0, 1]) / 2  # c (baseline wrong, test correct)
+        both_correct = (table_pos_neg[1, 1] + table_neg_pos[1, 1]) / 2 # d
         
         # Create averaged contingency table
         averaged_table = np.array([
@@ -744,8 +748,8 @@ class McNemarAnalyzer:
             'task_type': task_type,
             'cot': cot,
             'n_total': n_total,
-            'n_valid_pos_neg': len(valid_indices_pos_neg),
-            'n_valid_neg_pos': len(valid_indices_neg_pos),
+            'n_common_pos_neg': len(common_ids_pos_neg),
+            'n_common_neg_pos': len(common_ids_neg_pos),
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
@@ -870,4 +874,3 @@ class McNemarAnalyzer:
         print(f"Aggregated analysis complete!")
         print(f"Successfully analyzed: {successful_analyses} configurations")
         print(f"Output directory: {output_dir}")
-    
