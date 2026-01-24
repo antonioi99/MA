@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import helper_functions
 import numpy as np
 import json
+import torch
 import argparse
 import pickle
 from tqdm import tqdm
@@ -31,19 +32,17 @@ def main():
     args = parser.parse_args()
 
 
-    HF_TOKEN = "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"
-    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-    os.environ["HF_TOKEN"] = HF_TOKEN
 
     FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
 
-    # model = AutoModelForSequenceClassification.from_pretrained(FINETUNED_CLASSIFICATION_MODEL, num_labels=2, device_map="auto")
+
     model = AutoModelForSequenceClassification.from_pretrained(
     FINETUNED_CLASSIFICATION_MODEL,
     num_labels=2,
-    device_map=None,   # Disable automatic sharding
-    dtype="float32"  # Avoid mixed precision on CPU
-)
+    device_map="auto",   
+    dtype=torch.float16  
+    )
+    model = model.to('cuda')
     tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
     dataset_train = load_dataset("imdb", split="train")
@@ -146,25 +145,34 @@ def main():
 
 
     if args.exp == 'lime':
-
-        from lime import lime_text
-        from lime.lime_text import LimeTextExplainer
-    
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
+            
+        print(f"\n\nGenerating LIME explanations with idx in range {start} - {end}")
+        
         explainer_lime, predict_fn = helper_functions.lime_explainer(model, tokenizer)
 
-        explanations_lime = []
-        for i, sample_text in enumerate(sample_texts):
-            if i < 15:
-                print(f"\n--- Generating LIME explanation for Sample {i} ---")
-                explanation = explainer_lime.explain_instance(
-                sample_texts[i],
+        folder_raw = f'lime/{args.set}_set/lime_raw'
+        os.makedirs(folder_raw, exist_ok=True)
+
+        #######################
+        # GENERATE EXPLANATIONS
+        #######################
+
+        for idx in tqdm(range(subset_size), desc="Generating LIME explanations"):
+            # Generate LIME explanation for a single sample
+            explanation = explainer_lime.explain_instance(
+                subset_texts[idx],
                 predict_fn,
-                num_features=15,
+                num_features=len(subset_texts[idx].split()),  # Use all words as features
                 num_samples=1000
-                )
-                explanations_lime.append(explanation)
+            )
+            
+            # Save explanation
+            raw_path = f'{folder_raw}/lime_explanation_{subset_indices[idx]}.pkl'
+            
+            with open(raw_path, 'wb') as f:
+                pickle.dump(explanation, f)
+            
+            tqdm.write(f"Saved file '{raw_path}'")
 
 
 

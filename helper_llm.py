@@ -355,8 +355,8 @@ class LLMPrompter_pairwise:
         if chain_of_thought:
 
             answer_section = (
-                "Feedback: (write maximal 2-3 sentences on your decision)."
-                "RESULT: (A or B)"
+                "#Feedback: provide the reasoning behind your decision in 3 sentences.\n"
+                "#CORRECT ANSWER: A or B"
             )
         else:
             answer_section = (

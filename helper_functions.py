@@ -439,7 +439,6 @@ class ExplanationProcessor:
     
     def __init__(self, formatter: ExplanationFormatter):
         self.formatter = formatter
-        self.explanation_types = ['text', 'structured_text', 'top_words', 'natural']  # Added 'natural'
     
     def load_explanation_from_pkl(self, pkl_path: str):
         """Load a single explanation from a pkl file"""
@@ -601,10 +600,13 @@ def lime_explainer(model, tokenizer):
         """
         Wrapper function that takes a list of text strings and returns probabilities
         """
-        # Handle single string input
-
-        probabilities = predict_with_memory_management(list_of_texts)  # already existing function
-
+        # Use the same prediction function as SHAP
+        logits = predict_fast(documents=list_of_texts, model=model, tokenizer=tokenizer)
+        
+        # Convert logits to probabilities using softmax
+        import torch
+        probabilities = torch.nn.functional.softmax(torch.tensor(logits), dim=-1).numpy()
+        
         return probabilities
 
     # Create LIME text explainer
