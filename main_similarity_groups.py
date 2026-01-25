@@ -6,7 +6,7 @@ import json
 def main():
 
 
-    folder_merged = "explanations/NLP_format/shap/merged_data"
+    folder_merged = "explanations/NLP_format/merged_data"
     merged_data = os.path.join(folder_merged, 'merged_data.json')
 
 
