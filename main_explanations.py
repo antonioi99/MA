@@ -225,7 +225,7 @@ def main():
             threshold_shap=0.01,
             threshold_random=0.001,
             threshold_lime=0.01,
-            threshold_attention=0.005
+            threshold_attention=0.003
         )
 
 
