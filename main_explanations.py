@@ -12,9 +12,9 @@ from tqdm import tqdm
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exp", 
+    parser.add_argument("--type", 
                         type=str, 
-                        choices=["lime", "shap", "formatter"], 
+                        choices=["lime", "shap", "formatter", "merge"], 
                         required=True)
     parser.add_argument("--subset_size",
                         type=int,
@@ -33,17 +33,17 @@ def main():
 
 
 
-    FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
+    # FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
 
 
-    model = AutoModelForSequenceClassification.from_pretrained(
-    FINETUNED_CLASSIFICATION_MODEL,
-    num_labels=2,
-    device_map="auto",   
-    dtype=torch.float16  
-    )
-    model = model.to('cuda')
-    tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
+    # model = AutoModelForSequenceClassification.from_pretrained(
+    # FINETUNED_CLASSIFICATION_MODEL,
+    # num_labels=2,
+    # device_map="auto",   
+    # dtype=torch.float16  
+    # )
+    # model = model.to('cuda')
+    # tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
     dataset_train = load_dataset("imdb", split="train")
     dataset_test = load_dataset("imdb", split="test")
@@ -80,7 +80,7 @@ def main():
 
     
 
-    if args.exp == 'shap':
+    if args.type == 'shap':
 
         # def shap_predict(texts):
         #     return helper_functions.predict_with_memory_management(
@@ -116,8 +116,8 @@ def main():
             algorithm="partition" # see choices at https://shap.readthedocs.io/en/latest/generated/shap.explainers.other.Random.html
             )
         
-        folder_raw = f'shap/{args.set}_set/shap_raw'
-        folder_random = f'shap/{args.set}_set/shap_random'
+        folder_raw = f'explanations/pkl/shap/{args.set}_set/shap_raw'
+        folder_random = f'explanations/pkl/shap/{args.set}_set/shap_random'
         os.makedirs(folder_raw, exist_ok=True)
         os.makedirs(folder_random, exist_ok=True)
 
@@ -144,13 +144,13 @@ def main():
             tqdm.write(f"Saved file '{random_path}'")
 
 
-    if args.exp == 'lime':
+    if args.type == 'lime':
             
         print(f"\n\nGenerating LIME explanations with idx in range {start} - {end}")
         
         explainer_lime, predict_fn = helper_functions.lime_explainer(model, tokenizer)
 
-        folder_raw = f'lime/{args.set}_set/lime_raw'
+        folder_raw = f'explanations/pkl/lime/{args.set}_set/lime_raw'
         os.makedirs(folder_raw, exist_ok=True)
 
         #######################
@@ -175,22 +175,21 @@ def main():
             tqdm.write(f"Saved file '{raw_path}'")
 
 
-
-    if args.exp == 'formatter':
+    if args.type == 'formatter':
 
         formatter = helper_functions.ExplanationFormatter()
         processor = helper_functions.ExplanationProcessor(formatter)
 
 
-        folder_explanations_converted = f'explanations4NLP'
+        folder_explanations_converted = f'explanations/NLP_format'
         file_explanations_def = os.path.join(folder_explanations_converted, f'explanations_{start}_{end}.json')
         os.makedirs(folder_explanations_converted, exist_ok=True)
         
         # Process and save
         processor.process_explanations_from_files(
-            shap_pkl_dir=f"shap/{args.set}_set/shap_raw",
-            shap_random_pkl_dir=f"shap/{args.set}_set/shap_random",
-            lime_pkl_dir=None,  # or None if no LIME
+            shap_pkl_dir=f"explanations/pkl/shap/{args.set}_set/shap_raw",
+            shap_random_pkl_dir=f"explanations/pkl/shap/{args.set}_set/shap_random",
+            lime_pkl_dir=f"explanations/pkl/lime/{args.set}_set/lime_raw",  # or None if no LIME
             samples=subset_texts,
             labels=subset_labels,
             subset_indices=subset_indices,
@@ -199,6 +198,21 @@ def main():
             threshold_random=0.001
         )
 
+
+
+    if args.type == 'merge':
+
+        folder_merged = "explanations/NLP_format/merged_data"
+        os.makedirs(folder_merged, exist_ok=True)
+        merged_data = os.path.join(folder_merged, 'merged_data.json')
+
+        # Merge all JSON files from a folder
+        merged = helper_functions.merge_json_files_from_folder("explanations/NLP_format")
+        
+        with open(merged_data, 'w') as f:
+            json.dump(merged, f, indent=2)
+        
+        print(f"Merged {len(merged)} samples")
 
 if __name__ == '__main__':
     main()
