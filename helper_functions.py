@@ -130,7 +130,7 @@ class ExplanationFormatter:
         
         return words, scores
 
-        
+
 
     def _extract_shap_data(self, shap_values) -> List[Tuple[List[str], List[float]]]:
         """
@@ -755,3 +755,143 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
     print(f"\nCompleted! Created groups for {len(result_dict)} test instances")
     print(f"Results saved to {output_json_path}")
     return result_dict
+
+
+
+############################
+# ATTENTION HELPER FUNCTIONS
+############################
+
+def group_tokens_into_words(tokens, offsets):
+            """Group subword tokens into complete words."""
+            words = []
+            word_token_groups = []
+            current_word = []
+            current_token_indices = []
+            
+            for idx, (token, (start, end)) in enumerate(zip(tokens, offsets)):
+                # Skip special tokens
+                if token in ['<|begin_of_text|>', '<|end_of_text|>', '<s>', '</s>', '<pad>']:
+                    if current_word:
+                        words.append(''.join(current_word).strip('Ġ'))
+                        word_token_groups.append(current_token_indices)
+                        current_word = []
+                        current_token_indices = []
+                    continue
+                
+                # Check if this starts a new word
+                if token.startswith('Ġ') and current_word:
+                    words.append(''.join(current_word).strip('Ġ'))
+                    word_token_groups.append(current_token_indices)
+                    current_word = [token]
+                    current_token_indices = [idx]
+                else:
+                    current_word.append(token)
+                    current_token_indices.append(idx)
+            
+            # Add last word
+            if current_word:
+                words.append(''.join(current_word).strip('Ġ'))
+                word_token_groups.append(current_token_indices)
+            
+            return words, word_token_groups
+        
+def aggregate_attention_to_words(attention_tensor, word_token_groups, 
+                                non_pad_indices, method='mean'):
+    """Aggregate subword attention scores to word level."""
+    # Get last token position
+    actual_last_pos = non_pad_indices[-1].item()
+    
+    # Average attention across last 3 layers and all heads
+    selected_layers = attention_tensor[-3:]
+    avg_layers = selected_layers.mean(dim=0)[0]  # (heads, seq, seq)
+    avg_heads = avg_layers.mean(dim=0)  # (seq, seq)
+    
+    # Get last token's attention to all tokens
+    last_token_attn = avg_heads[actual_last_pos].cpu().numpy()
+    
+    # Aggregate to word level
+    word_scores = []
+    for token_indices in word_token_groups:
+        actual_positions = [non_pad_indices[i].item() for i in token_indices]
+        token_scores = [last_token_attn[pos] for pos in actual_positions]
+        
+        if method == 'max':
+            word_score = max(token_scores)
+        elif method == 'mean':
+            word_score = np.mean(token_scores)
+        elif method == 'sum':
+            word_score = np.sum(token_scores)
+        
+        word_scores.append(word_score)
+    
+    return np.array(word_scores)
+
+def extract_attention_explanation(text, model, tokenizer): 
+    """Extract word-level attention scores for a single text."""
+    # Tokenize
+    encoding = tokenizer(
+        text,
+        max_length=512,
+        padding='max_length',
+        truncation=True,
+        return_tensors='pt',
+        return_offsets_mapping=True
+    )
+    input_ids = encoding['input_ids'].to(model.device) 
+    attention_mask = encoding['attention_mask'].to(model.device) 
+    offsets = encoding['offset_mapping'][0]
+    
+    # Get prediction and attention
+    with torch.no_grad():
+        output = model(input_ids, attention_mask=attention_mask, output_attentions=True)
+        logits = output.logits
+        probs = torch.softmax(logits, dim=-1)
+        pred_class = torch.argmax(logits).item()
+        confidence = probs[0, pred_class].item()
+    
+    # Get tokens
+    all_tokens = tokenizer.convert_ids_to_tokens(input_ids[0].cpu().tolist())
+    non_pad_mask = attention_mask[0].cpu().bool()
+    non_pad_indices = non_pad_mask.nonzero(as_tuple=True)[0]
+    tokens_filtered = [all_tokens[i] for i in non_pad_indices]
+    offsets_filtered = [offsets[i] for i in non_pad_indices]
+    
+    # Get attention tensor
+    attentions = output.attentions
+    attention_all_layers = torch.stack(attentions)
+    
+    # Group tokens into words
+    words, word_token_groups = group_tokens_into_words(tokens_filtered, offsets_filtered)
+    
+    # Compute word-level scores (all three methods)
+    word_scores_mean = aggregate_attention_to_words(
+        attention_all_layers, word_token_groups, non_pad_indices, method='mean'
+    )
+    word_scores_max = aggregate_attention_to_words(
+        attention_all_layers, word_token_groups, non_pad_indices, method='max'
+    )
+    word_scores_sum = aggregate_attention_to_words(
+        attention_all_layers, word_token_groups, non_pad_indices, method='sum'
+    )
+    
+    # Build word data list
+    word_data = []
+    for i, word in enumerate(words):
+        word_info = {
+            'word': word,
+            'attention_mean': float(word_scores_mean[i]),
+            'attention_max': float(word_scores_max[i]),
+            'attention_sum': float(word_scores_sum[i])
+        }
+        word_data.append(word_info)
+    
+    # Simple structure
+    attention_explanation = {
+        'text': text,
+        'prediction': int(pred_class),
+        'confidence': float(confidence),
+        'words': word_data
+    }
+    
+    return attention_explanation
