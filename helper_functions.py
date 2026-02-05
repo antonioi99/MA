@@ -169,6 +169,22 @@ class ExplanationFormatter:
 
         return extracted_data
 
+    def _extract_attention_data(self, attention_explanations: List) -> List[Tuple[List[str], List[float]]]:
+        """
+        Extract words and scores from Attention explanations.
+        Uses the mean attention scores (recommended aggregation method).
+        """
+        extracted_data = []
+        
+        for explanation in attention_explanations:
+            words = [word_info['word'] for word_info in explanation['words']]
+            # Use mean attention as the primary score (you can change to 'max' or 'sum' if preferred)
+            scores = [word_info['attention_mean'] for word_info in explanation['words']]
+            
+            extracted_data.append((words, scores))
+        
+        return extracted_data
+
 
     def load_explanations(self, explanations, explanation_type: str):
         """
@@ -180,8 +196,10 @@ class ExplanationFormatter:
             self.processed_data = self._extract_shap_data(explanations)
         elif self.explanation_type == 'lime':
             self.processed_data = self._extract_lime_data(explanations)
+        elif self.explanation_type == 'attention':  # ← ADD THIS
+            self.processed_data = self._extract_attention_data(explanations)
         else:
-            raise ValueError("explanation_type must be 'shap' or 'lime'")
+            raise ValueError("explanation_type must be 'shap', 'lime', or 'attention'")
 
 
 
@@ -465,17 +483,19 @@ class ExplanationProcessor:
         with open(pkl_path, 'rb') as f:
             return pickle.load(f)
     
+
     def process_single_explanation(self, explanation, explanation_type: str, threshold: float) -> Dict[str, str]:
         """
         Process a single explanation and return all formatted versions
         
         Returns:
             dict with keys: 'text_scores', 'text_labels', 'structured_text_scores', 
-                           'structured_text_labels', 'top_words_scores', 'top_words_labels',
-                           'natural_words', 'part_of_speech'
+                        'structured_text_labels', 'top_words_scores', 'top_words_labels',
+                        'natural_words', 'part_of_speech'
         """
         if not isinstance(explanation, list):
             explanation = [explanation]
+        
         # Load explanation into formatter
         self.formatter.load_explanations(explanation, explanation_type)
         
@@ -483,47 +503,53 @@ class ExplanationProcessor:
         formatted = {
             'text_scores': self.formatter.extract_as_text(brackets='score', threshold=threshold)[0],
             'text_labels': self.formatter.extract_as_text(brackets='label', threshold=threshold)[0],
-
             'structured_text_scores': self.formatter.extract_as_structured_text(brackets='score', threshold=threshold)[0],
             'structured_text_labels': self.formatter.extract_as_structured_text(brackets='label', threshold=threshold)[0],
-
             'top_words_scores': self.formatter.extract_top_words(brackets='score', top_n=20)[0],
             'top_words_labels': self.formatter.extract_top_words(brackets='label', top_n=20)[0],
-            
             'natural_words': self.formatter.extract_as_natural_explanation(top_n=5)[0],
             'part_of_speech': self.formatter.extract_pos(top_n=5)[0]
         }
         
         return formatted
+
     
     def process_explanations_from_files(
         self,
         shap_pkl_dir: str,
-        shap_random_pkl_dir: str,  #for random SHAP
-        lime_pkl_dir: Optional[str],  # Can be None
+        shap_random_pkl_dir: str,
+        lime_pkl_dir: str,
+        attention_pkl_dir: str,
         samples: List[str],
         labels: List[int],
         subset_indices: List[int],
         output_json: str, 
-        threshold_real: float,
-        threshold_random: float
+        threshold_shap: float,
+        threshold_random: float,
+        threshold_lime: float,
+        threshold_attention: float
     ):
         """
-        Read SHAP, random SHAP, and LIME pkl files and create the final JSON structure
+        Read SHAP, random SHAP, LIME, and Attention pkl files and create the final JSON structure
         
         Args:
             shap_pkl_dir: Directory containing shap_values_*.pkl files
             shap_random_pkl_dir: Directory containing shap_values_random_*.pkl files
             lime_pkl_dir: Directory containing lime_values_*.pkl files (can be None)
+            attention_pkl_dir: Directory containing attention_explanation_*.pkl files (can be None)
             samples: List of sample texts
             labels: List of true labels
             subset_indices: List of indices to process
             output_json: Output JSON file path
+            threshold_real: Threshold for SHAP/LIME
+            threshold_random: Threshold for random SHAP
+            threshold_attention: Threshold for attention scores
         """
         data_dict = {}
         shap_dir = Path(shap_pkl_dir)
         shap_random_dir = Path(shap_random_pkl_dir)
         lime_dir = Path(lime_pkl_dir) if lime_pkl_dir else None
+        attention_dir = Path(attention_pkl_dir) if attention_pkl_dir else None  
         
         for idx, sample_idx in enumerate(subset_indices):
             # Load SHAP explanation (raw)
@@ -534,7 +560,7 @@ class ExplanationProcessor:
                 continue
             
             shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
-            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_real)
+            shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_shap)
             
             # Load SHAP random explanation
             shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
@@ -552,9 +578,19 @@ class ExplanationProcessor:
                 lime_pkl_path = lime_dir / f"lime_explanation_{sample_idx}.pkl"
                 if lime_pkl_path.exists():
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
-                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
+                    lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_lime)
                 else:
                     print(f"Warning: LIME file not found for index {sample_idx}")
+            
+            # Load Attention explanation (if available) 
+            attention_formatted = {}
+            if attention_dir:
+                attention_pkl_path = attention_dir / f"attention_explanation_{sample_idx}.pkl"
+                if attention_pkl_path.exists():
+                    attention_explanation = self.load_explanation_from_pkl(attention_pkl_path)
+                    attention_formatted = self.process_single_explanation(attention_explanation, 'attention', threshold=threshold_attention)
+                else:
+                    print(f"Warning: Attention file not found for index {sample_idx}")
             
             # Build the data structure
             data_dict[int(sample_idx)] = {
@@ -562,7 +598,8 @@ class ExplanationProcessor:
                 "label": int(labels[idx]),
                 "shap": shap_formatted,
                 "shap_random": shap_random_formatted,
-                "lime": lime_formatted
+                "lime": lime_formatted,
+                "attention": attention_formatted 
             }
         
         # Save to JSON

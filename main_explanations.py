@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--type", 
                         type=str, 
-                        choices=["lime", "shap", "formatter", "merge"], 
+                        choices=["lime", "shap", "attention", "formatter", "merge"], 
                         required=True)
     parser.add_argument("--subset_size",
                         type=int,
@@ -33,17 +33,19 @@ def main():
 
 
 
-    # FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
+    FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
 
 
-    # model = AutoModelForSequenceClassification.from_pretrained(
-    # FINETUNED_CLASSIFICATION_MODEL,
-    # num_labels=2,
-    # device_map="auto",   
-    # dtype=torch.float16  
-    # )
-    # model = model.to('cuda')
-    # tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
+    if args.type not in ["formatter", "merge"]:
+        model = AutoModelForSequenceClassification.from_pretrained(
+            FINETUNED_CLASSIFICATION_MODEL,
+            num_labels=2,
+            device_map="auto",   
+            dtype=torch.float16, 
+            output_attentions=True  
+        )
+        model = model.to('cuda')
+        tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
     dataset_train = load_dataset("imdb", split="train")
     dataset_test = load_dataset("imdb", split="test")
@@ -175,11 +177,36 @@ def main():
             tqdm.write(f"Saved file '{raw_path}'")
 
 
+    if args.type == 'attention':
+        
+        print(f"\n\nGenerating Attention explanations with idx in range {start} - {end}")
+        
+        
+        folder_raw = f'explanations/pkl/attention/{args.set}_set/attention_raw'
+        os.makedirs(folder_raw, exist_ok=True)
+        
+                
+        for idx in tqdm(range(subset_size), desc="Generating Attention explanations"):
+            # Generate attention explanation for a single sample
+            attention_explanation = helper_functions.extract_attention_explanation(
+                text=subset_texts[idx],
+                model=model,
+                tokenizer=tokenizer
+            )
+            
+            # Save explanation
+            raw_path = f'{folder_raw}/attention_explanation_{subset_indices[idx]}.pkl'
+            
+            with open(raw_path, 'wb') as f:
+                pickle.dump(attention_explanation, f)
+            
+            tqdm.write(f"Saved file '{raw_path}'")
+
+
     if args.type == 'formatter':
 
         formatter = helper_functions.ExplanationFormatter()
         processor = helper_functions.ExplanationProcessor(formatter)
-
 
         folder_explanations_converted = f'explanations/NLP_format'
         file_explanations_def = os.path.join(folder_explanations_converted, f'explanations_{start}_{end}.json')
@@ -189,13 +216,16 @@ def main():
         processor.process_explanations_from_files(
             shap_pkl_dir=f"explanations/pkl/shap/{args.set}_set/shap_raw",
             shap_random_pkl_dir=f"explanations/pkl/shap/{args.set}_set/shap_random",
-            lime_pkl_dir=f"explanations/pkl/lime/{args.set}_set/lime_raw",  # or None if no LIME
+            lime_pkl_dir=f"explanations/pkl/lime/{args.set}_set/lime_raw",
+            attention_pkl_dir=f"explanations/pkl/attention/{args.set}_set/attention_raw",  # ← ADD THIS
             samples=subset_texts,
             labels=subset_labels,
             subset_indices=subset_indices,
             output_json=file_explanations_def,
-            threshold_real=0.01,
-            threshold_random=0.001
+            threshold_shap=0.01,
+            threshold_random=0.001,
+            threshold_lime=0.01,
+            threshold_attention=0.005
         )
 
 
