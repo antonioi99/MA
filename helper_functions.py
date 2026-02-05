@@ -131,6 +131,7 @@ class ExplanationFormatter:
         return words, scores
 
         
+
     def _extract_shap_data(self, shap_values) -> List[Tuple[List[str], List[float]]]:
         """
         Extract words and scores from SHAP explanations.
@@ -138,17 +139,36 @@ class ExplanationFormatter:
         """
         extracted_data = []
 
-        for i in range(len(shap_values.data)):
-            # Create a single-sample shap_values object for reconstruction
-            single_shap = type('obj', (object,), {
-                'data': [shap_values.data[i]],
-                'values': [shap_values.values[i]]
-            })()
-            
-            words, scores = self._reconstruct_words_from_llama_shap(single_shap)
-            extracted_data.append((words, scores))
+
+        if isinstance(shap_values, list):
+            for explanation in shap_values:
+                if hasattr(explanation, 'data'):
+                    for i in range(len(explanation.data)):
+                        single_shap = type('obj', (object,), {
+                            'data': [explanation.data[i]],
+                            'values': [explanation.values[i]]
+                        })()
+                        
+                        words, scores = self._reconstruct_words_from_llama_shap(single_shap)
+                        extracted_data.append((words, scores))
+                else:
+                    raise ValueError(f"List element is not a SHAP Explanation object: {type(explanation)}")
+        
+        elif hasattr(shap_values, 'data'):
+            for i in range(len(shap_values.data)):
+                single_shap = type('obj', (object,), {
+                    'data': [shap_values.data[i]],
+                    'values': [shap_values.values[i]]
+                })()
+                
+                words, scores = self._reconstruct_words_from_llama_shap(single_shap)
+                extracted_data.append((words, scores))
+        
+        else:
+            raise ValueError(f"Unexpected SHAP values format: {type(shap_values)}")
 
         return extracted_data
+
 
     def load_explanations(self, explanations, explanation_type: str):
         """
@@ -454,6 +474,8 @@ class ExplanationProcessor:
                            'structured_text_labels', 'top_words_scores', 'top_words_labels',
                            'natural_words', 'part_of_speech'
         """
+        if not isinstance(explanation, list):
+            explanation = [explanation]
         # Load explanation into formatter
         self.formatter.load_explanations(explanation, explanation_type)
         
@@ -527,7 +549,7 @@ class ExplanationProcessor:
             # Load LIME explanation (if available)
             lime_formatted = {}
             if lime_dir:
-                lime_pkl_path = lime_dir / f"lime_values_{sample_idx}.pkl"
+                lime_pkl_path = lime_dir / f"lime_explanation_{sample_idx}.pkl"
                 if lime_pkl_path.exists():
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
                     lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_real)
