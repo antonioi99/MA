@@ -196,7 +196,7 @@ class ExplanationFormatter:
             self.processed_data = self._extract_shap_data(explanations)
         elif self.explanation_type == 'lime':
             self.processed_data = self._extract_lime_data(explanations)
-        elif self.explanation_type == 'attention':  # ← ADD THIS
+        elif self.explanation_type == 'attention': 
             self.processed_data = self._extract_attention_data(explanations)
         else:
             raise ValueError("explanation_type must be 'shap', 'lime', or 'attention'")
@@ -205,9 +205,8 @@ class ExplanationFormatter:
 
     def extract_as_text(self, brackets, threshold: float = 0.01) -> List[str]:
         """
-        Format explanations as text with POSITIVE/NEGATIVE labels instead of scores
-        
-        Example: "This[POSITIVE] is[NEGATIVE] a good[POSITIVE] film[POSITIVE]"
+        Format explanations as text with labels/scores
+        For attention: only marks HIGH attention words, ignores LOW
         """
         results = []
 
@@ -219,20 +218,38 @@ class ExplanationFormatter:
             result_parts = []
 
             for word, score in zip(words, scores):
-                if abs(score) < threshold:
-                    result_parts.append(word)
-                else:
-                    if brackets == 'label':
-                        label = "POSITIVE" if score >= 0 else "NEGATIVE"
-                        result_parts.append(f"{word}[{label}]")
-                    elif brackets == 'score':
-                        sign = "+" if score >= 0 else ""
-                        result_parts.append(f"{word}[{sign}{score:.3f}]")
+                if self.explanation_type == 'attention':
+                    # Only mark words with HIGH attention (above threshold)
+                    if score >= threshold:
+                        if brackets == 'label':
+                            result_parts.append(f"{word}[HIGH]")
+                        elif brackets == 'score':
+                            result_parts.append(f"{word}[{score:.3f}]")
+                    else:
+                        # No marking for low attention words
+                        result_parts.append(word)
+                else:  # SHAP/LIME - original behavior
+                    if abs(score) < threshold:
+                        result_parts.append(word)
+                    else:
+                        if brackets == 'label':
+                            label = "POSITIVE" if score >= 0 else "NEGATIVE"
+                            result_parts.append(f"{word}[{label}]")
+                        elif brackets == 'score':
+                            sign = "+" if score >= 0 else ""
+                            result_parts.append(f"{word}[{sign}{score:.3f}]")
             
-            if brackets == 'score':
-                explanation = f"The model predicted {prediction}. Bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
-            elif brackets == 'label':
-                explanation = f"The model predicted {prediction}. Bracketed labels indicate each word's contribution to the overall sentiment (NEGATIVE pulls toward negative sentiment, POSITIVE pulls toward positive sentiment).\n\n"
+            # Different explanations for attention vs SHAP/LIME
+            if self.explanation_type == 'attention':
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. Bracketed scores show how much attention the model paid to each word (0.0 = ignored, 1.0 = highest attention).\n\n"
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. Words marked [HIGH] received strong attention from the model when making its prediction.\n\n"
+            else:  # SHAP or LIME
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. Bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. Bracketed labels indicate each word's contribution to the overall sentiment (NEGATIVE pulls toward negative sentiment, POSITIVE pulls toward positive sentiment).\n\n"
 
             results.append(explanation + " ".join(result_parts))
 
@@ -240,7 +257,8 @@ class ExplanationFormatter:
 
     def extract_as_structured_text(self, brackets, threshold: float = 0.01) -> List[str]:
         """
-        Format explanations as structured text with positive/negative sections
+        Format explanations as structured text
+        For attention: only shows HIGH ATTENTION words
         """
         results = []
 
@@ -249,39 +267,61 @@ class ExplanationFormatter:
             avg_score = sum(scores) / len(scores) if scores else 0
             prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
 
-            positive_words = []
-            negative_words = []
-            neutral_words = []
-
-            for word, score in zip(words, scores):
-                if abs(score) < threshold:
-                    neutral_words.append(word)
-                elif score > 0:
-                    if brackets == 'score':
-                        positive_words.append(f"{word}[+{score:.3f}]")
-                    elif brackets == 'label':
-                        positive_words.append(word)
-
+            if self.explanation_type == 'attention':
+                # For attention: only show HIGH attention words
+                high_attention = []
+                
+                for word, score in zip(words, scores):
+                    if score >= threshold:
+                        if brackets == 'score':
+                            high_attention.append(f"{word}[{score:.3f}]")
+                        elif brackets == 'label':
+                            high_attention.append(word)
+                
+                result_parts = []
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. These words received high attention from the model (scores range from 0.0 = ignored to 1.0 = highest attention).\n\n"
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. These words received high attention from the model when making its prediction.\n\n"
+                
+                result_parts.append(explanation)
+                if high_attention:
+                    result_parts.append(f"HIGH ATTENTION: {' '.join(high_attention)}")
                 else:
-                    if brackets == 'score':
-                        negative_words.append(f"{word}[{score:.3f}]")
-                    elif brackets == 'label':
-                        negative_words.append(word)
-
-            result_parts = []
-            if brackets == 'score':
-                explanation = f"The model predicted {prediction}. Words are grouped by sentiment: POSITIVE, NEGATIVE, and NEUTRAL. The bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
-                result_parts.append(explanation)
-            elif brackets == 'label':
-                explanation = f"The model predicted {prediction}. Words are grouped by their sentiment contribution: POSITIVE, NEGATIVE, and NEUTRAL.\n\n"
-                result_parts.append(explanation)
+                    result_parts.append("HIGH ATTENTION: (none above threshold)")
             
-            if positive_words:
-                result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
-            if negative_words:
-                result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
-            if neutral_words:
-                result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
+            else:  # SHAP or LIME - original code
+                positive_words = []
+                negative_words = []
+                neutral_words = []
+
+                for word, score in zip(words, scores):
+                    if abs(score) < threshold:
+                        neutral_words.append(word)
+                    elif score > 0:
+                        if brackets == 'score':
+                            positive_words.append(f"{word}[+{score:.3f}]")
+                        elif brackets == 'label':
+                            positive_words.append(word)
+                    else:
+                        if brackets == 'score':
+                            negative_words.append(f"{word}[{score:.3f}]")
+                        elif brackets == 'label':
+                            negative_words.append(word)
+
+                result_parts = []
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. Words are grouped by sentiment: POSITIVE, NEGATIVE, and NEUTRAL. Scores indicate contribution strength.\n\n"
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. Words are grouped by their sentiment contribution: POSITIVE, NEGATIVE, and NEUTRAL.\n\n"
+                
+                result_parts.append(explanation)
+                if positive_words:
+                    result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
+                if negative_words:
+                    result_parts.append(f"NEGATIVE SENTIMENT: {' '.join(negative_words)}")
+                if neutral_words:
+                    result_parts.append(f"NEUTRAL: {' '.join(neutral_words)}")
 
             results.append(" ".join(result_parts))
 
@@ -289,7 +329,7 @@ class ExplanationFormatter:
 
     def extract_top_words(self, brackets, top_n: int = 20) -> List[str]:
         """
-        Extract top N most influential words with their scores
+        Extract top N most influential/attended words
         """
         results = []
 
@@ -304,16 +344,26 @@ class ExplanationFormatter:
             top_words = word_scores[:top_n]
             result_parts = []
             
-            if brackets == 'score':
-                explanation = f"The model predicted {prediction}. These are the most influential words for this prediction. Scores show each word's contribution (negative values push toward negative sentiment, positive values push toward positive sentiment):\n\n"
-                for word, score in top_words:
-                    result_parts.append(f"{word} [{score:+.3f}]\n")
-            elif brackets == 'label':
-                explanation = f"The model predicted {prediction}. These are the most influential words for this prediction:\n\n"
-                for word, score in top_words:
-                    sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
-                    result_parts.append(f"{word} [{sentiment}]\n")
-                    
+            if self.explanation_type == 'attention':
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. These are the most attended words (scores: 0.0 = ignored, 1.0 = highest attention):\n\n"
+                    for word, score in top_words:
+                        result_parts.append(f"{word} [{score:.3f}]\n")
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. These words received the highest attention:\n\n"
+                    for word, score in top_words:
+                        result_parts.append(f"{word} [HIGH]\n")
+            else:  # SHAP or LIME
+                if brackets == 'score':
+                    explanation = f"The model predicted {prediction}. These are the most influential words for this prediction. Scores show contribution (negative = toward negative, positive = toward positive):\n\n"
+                    for word, score in top_words:
+                        result_parts.append(f"{word} [{score:+.3f}]\n")
+                elif brackets == 'label':
+                    explanation = f"The model predicted {prediction}. These are the most influential words for this prediction:\n\n"
+                    for word, score in top_words:
+                        sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
+                        result_parts.append(f"{word} [{sentiment}]\n")
+                        
             results.append(explanation + ''.join(result_parts))
 
         return results
@@ -343,14 +393,18 @@ class ExplanationFormatter:
             avg_score = sum(scores) / len(scores) if scores else 0
             prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
             
-            # Get top influential words for the predicted class
+            # Get top influential words
             word_scores = list(zip(words, scores))
             
-            # Filter for words that align with the prediction
-            if prediction == "POSITIVE":
-                relevant_words = [(w, s) for w, s in word_scores if s > 0]
+            if self.explanation_type == 'attention':
+                # For attention: just get words with highest attention scores
+                relevant_words = [(w, s) for w, s in word_scores]
             else:
-                relevant_words = [(w, s) for w, s in word_scores if s < 0]
+                # For SHAP/LIME: filter for words that align with the prediction
+                if prediction == "POSITIVE":
+                    relevant_words = [(w, s) for w, s in word_scores if s > 0]
+                else:
+                    relevant_words = [(w, s) for w, s in word_scores if s < 0]
             
             # Filter out punctuation and conjunctions
             filtered_words = [
@@ -376,10 +430,13 @@ class ExplanationFormatter:
                     top_words.append(word)
                     seen_words.add(word.lower())
             
-            # Format as natural sentence
+            # Format as natural sentence (different wording for attention)
             if top_words:
                 words_str = ", ".join(top_words)
-                result = f"The model predicted {prediction} because of the following words: {words_str}"
+                if self.explanation_type == 'attention':
+                    result = f"The model predicted {prediction} while paying most attention the following words: {words_str}"
+                else:
+                    result = f"The model predicted {prediction} because of the following words: {words_str}"
             else:
                 result = f"The model predicted {prediction}"
             
@@ -431,18 +488,26 @@ class ExplanationFormatter:
             # Filter for content words
             content_pos = pos
             
-            if prediction == "POSITIVE":
+            if self.explanation_type == 'attention':
+                # For attention: get all content words (no positive/negative filtering)
                 relevant_words = [(w, s) for w, s in word_scores 
-                                if s > 0 
-                                and word_to_pos.get(w) in content_pos
+                                if word_to_pos.get(w) in content_pos
                                 and len(w) > 2
                                 and w not in string.punctuation]
             else:
-                relevant_words = [(w, s) for w, s in word_scores 
-                                if s < 0 
-                                and word_to_pos.get(w) in content_pos
-                                and len(w) > 2
-                                and w not in string.punctuation]
+                # For SHAP/LIME: filter by prediction direction
+                if prediction == "POSITIVE":
+                    relevant_words = [(w, s) for w, s in word_scores 
+                                    if s > 0 
+                                    and word_to_pos.get(w) in content_pos
+                                    and len(w) > 2
+                                    and w not in string.punctuation]
+                else:
+                    relevant_words = [(w, s) for w, s in word_scores 
+                                    if s < 0 
+                                    and word_to_pos.get(w) in content_pos
+                                    and len(w) > 2
+                                    and w not in string.punctuation]
             
             # Sort by absolute score and get top N
             relevant_words.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -460,15 +525,20 @@ class ExplanationFormatter:
                     top_words.append(word)
                     seen_words.add(word.lower())
             
+            # Format result (different wording for attention)
             if top_words:
                 words_str = ", ".join(top_words)
-                result = f"The model predicted {prediction} because of following words: {words_str}"
+                if self.explanation_type == 'attention':
+                    result = f"The model predicted {prediction} while paying most attention to the following words: {words_str}"
+                else:
+                    result = f"The model predicted {prediction} because of following words: {words_str}"
             else:
                 result = f"The model predicted {prediction} (no significant words found)"
             
             results.append(result)
         
         return results
+
     
 class ExplanationProcessor:
     """
