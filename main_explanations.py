@@ -222,10 +222,10 @@ def main():
             labels=subset_labels,
             subset_indices=subset_indices,
             output_json=file_explanations_def,
-            threshold_shap=0.01,
-            threshold_random=0.001,
-            threshold_lime=0.01,
-            threshold_attention=0.003
+            threshold_shap=0.010000,
+            threshold_lime=0.015433,
+            threshold_attention=0.004307,
+            threshold_random=0.001
         )
 
 
