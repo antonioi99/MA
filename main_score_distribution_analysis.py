@@ -105,31 +105,107 @@ def print_statistics(stats):
     print(f"STATISTICS: {stats['name']}")
     print(f"{'='*80}")
     print(f"Total scores: {stats['count']:,}")
-    print(f"\nBasic Statistics:")
-    print(f"  Mean:   {stats['mean']:.6f}")
-    print(f"  Median: {stats['median']:.6f}")
-    print(f"  Std:    {stats['std']:.6f}")
-    print(f"  Min:    {stats['min']:.6f}")
-    print(f"  Max:    {stats['max']:.6f}")
     
-    print(f"\nPercentiles:")
-    print(f"  25th: {stats['q25']:.6f}")
-    print(f"  75th: {stats['q75']:.6f}")
-    print(f"  90th: {stats['q90']:.6f}")
-    print(f"  95th: {stats['q95']:.6f}")
-    print(f"  99th: {stats['q99']:.6f}")
+    # ========================================================================
+    # RAW SCORES (signed for SHAP/LIME, positive for Attention)
+    # ========================================================================
+    print(f"\n{'─'*80}")
+    print(f"RAW SCORE STATISTICS:")
+    print(f"{'─'*80}")
+    print(f"  Mean:   {stats['mean']:>10.6f}")
+    print(f"  Median: {stats['median']:>10.6f}")
+    print(f"  Std:    {stats['std']:>10.6f}")
+    print(f"  Min:    {stats['min']:>10.6f}")
+    print(f"  Max:    {stats['max']:>10.6f}")
     
+    print(f"\n  Percentiles:")
+    print(f"    25th: {stats['q25']:>10.6f}")
+    print(f"    50th: {stats['median']:>10.6f}  (median)")
+    print(f"    75th: {stats['q75']:>10.6f}")
+    print(f"    90th: {stats['q90']:>10.6f}")
+    print(f"    95th: {stats['q95']:>10.6f}")
+    print(f"    99th: {stats['q99']:>10.6f}")
+    
+    # ========================================================================
+    # SIGNED SCORE BREAKDOWN (SHAP/LIME only)
+    # ========================================================================
     if 'positive_count' in stats:
-        print(f"\nSigned Score Statistics:")
-        print(f"  Positive scores: {stats['positive_count']:,} ({stats['positive_count']/stats['count']*100:.1f}%)")
-        print(f"  Negative scores: {stats['negative_count']:,} ({stats['negative_count']/stats['count']*100:.1f}%)")
-        print(f"  Positive mean:   {stats['positive_mean']:.6f}")
-        print(f"  Negative mean:   {stats['negative_mean']:.6f}")
-        print(f"\nAbsolute Value Statistics:")
-        print(f"  Abs Mean:   {stats['abs_mean']:.6f}")
-        print(f"  Abs Median: {stats['abs_median']:.6f}")
-        print(f"  Abs 90th:   {stats['abs_q90']:.6f}")
-        print(f"  Abs 95th:   {stats['abs_q95']:.6f}")
+        print(f"\n{'─'*80}")
+        print(f"SIGNED SCORE BREAKDOWN:")
+        print(f"{'─'*80}")
+        print(f"  Positive scores: {stats['positive_count']:>10,} ({stats['positive_count']/stats['count']*100:>5.1f}%)")
+        print(f"    └─ Mean:       {stats['positive_mean']:>10.6f}")
+        print()
+        print(f"  Negative scores: {stats['negative_count']:>10,} ({stats['negative_count']/stats['count']*100:>5.1f}%)")
+        print(f"    └─ Mean:       {stats['negative_mean']:>10.6f}")
+        
+        # ====================================================================
+        # ABSOLUTE VALUE STATISTICS (PRIMARY for thresholding!)
+        # ====================================================================
+        print(f"\n{'─'*80}")
+        print(f"ABSOLUTE VALUE STATISTICS (for thresholding):")
+        print(f"{'─'*80}")
+        print(f"  Mean:   {stats['abs_mean']:>10.6f}")
+        print(f"  Median: {stats['abs_median']:>10.6f}")
+        print(f"  Std:    {stats['abs_std']:>10.6f}")
+        print(f"  Min:    {stats['abs_min']:>10.6f}")
+        print(f"  Max:    {stats['abs_max']:>10.6f}")
+        
+        print(f"\n  Percentiles (for threshold selection):")
+        print(f"    25th: {stats['abs_q25']:>10.6f}  → Highlights top 75% of words")
+        print(f"    50th: {stats['abs_median']:>10.6f}  → Highlights top 50% of words (median)")
+        print(f"    75th: {stats['abs_q75']:>10.6f}  → Highlights top 25% of words")
+        print(f"    90th: {stats['abs_q90']:>10.6f}  → Highlights top 10% of words")
+        print(f"    95th: {stats['abs_q95']:>10.6f}  → Highlights top 5% of words")
+        print(f"    99th: {stats['abs_q99']:>10.6f}  → Highlights top 1% of words")
+
+
+def print_comparison_table(shap_stats, lime_stats, attention_stats):
+    """Print a comparison table of absolute value statistics."""
+    print("\n" + "="*80)
+    print("COMPARISON: ABSOLUTE VALUE STATISTICS")
+    print("="*80)
+    print()
+    print(f"{'Metric':<20} {'SHAP':>15} {'LIME':>15} {'Attention':>15}")
+    print("─" * 80)
+    
+    # For SHAP and LIME, use absolute stats; for Attention, use regular stats
+    shap_abs = 'abs_' if 'abs_mean' in shap_stats else ''
+    lime_abs = 'abs_' if 'abs_mean' in lime_stats else ''
+    attn_abs = ''  # Attention doesn't need abs_ prefix
+    
+    print(f"{'Mean':<20} {shap_stats.get(f'{shap_abs}mean', shap_stats['mean']):>15.6f} "
+          f"{lime_stats.get(f'{lime_abs}mean', lime_stats['mean']):>15.6f} "
+          f"{attention_stats['mean']:>15.6f}")
+    
+    print(f"{'Median':<20} {shap_stats.get(f'{shap_abs}median', shap_stats['median']):>15.6f} "
+          f"{lime_stats.get(f'{lime_abs}median', lime_stats['median']):>15.6f} "
+          f"{attention_stats['median']:>15.6f}")
+    
+    print(f"{'Std Dev':<20} {shap_stats.get(f'{shap_abs}std', shap_stats['std']):>15.6f} "
+          f"{lime_stats.get(f'{lime_abs}std', lime_stats['std']):>15.6f} "
+          f"{attention_stats['std']:>15.6f}")
+    
+    print(f"{'Min':<20} {shap_stats.get(f'{shap_abs}min', shap_stats['min']):>15.6f} "
+          f"{lime_stats.get(f'{lime_abs}min', lime_stats['min']):>15.6f} "
+          f"{attention_stats['min']:>15.6f}")
+    
+    print(f"{'Max':<20} {shap_stats.get(f'{shap_abs}max', shap_stats['max']):>15.6f} "
+          f"{lime_stats.get(f'{lime_abs}max', lime_stats['max']):>15.6f} "
+          f"{attention_stats['max']:>15.6f}")
+    
+    print()
+    print("Percentiles:")
+    print("─" * 80)
+    
+    for percentile, key in [('25th', 'q25'), ('50th', 'median'), ('75th', 'q75'), 
+                           ('90th', 'q90'), ('95th', 'q95'), ('99th', 'q99')]:
+        abs_key = f'{shap_abs}{key}' if shap_abs else key
+        print(f"  {percentile:<18} {shap_stats.get(abs_key, shap_stats[key]):>15.6f} "
+              f"{lime_stats.get(f'{lime_abs}{key}', lime_stats[key]):>15.6f} "
+              f"{attention_stats[key]:>15.6f}")
+    
+    print()
 
 def suggest_thresholds(stats):
     """Suggest threshold values based on statistics."""
@@ -168,7 +244,11 @@ def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='
     """Create comprehensive distribution plots."""
     fig, axes = plt.subplots(3, 3, figsize=(20, 16))
     
-    # SHAP plots
+    # ========================================================================
+    # SHAP PLOTS
+    # ========================================================================
+    
+    # SHAP: Regular histogram
     axes[0, 0].hist(shap_scores, bins=100, alpha=0.7, color='blue', edgecolor='black')
     axes[0, 0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero')
     axes[0, 0].set_xlabel('Score', fontsize=12)
@@ -177,22 +257,29 @@ def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='
     axes[0, 0].legend()
     axes[0, 0].grid(alpha=0.3)
     
+    # SHAP: Box plot
     axes[0, 1].boxplot([shap_scores], vert=True, patch_artist=True,
                        boxprops=dict(facecolor='lightblue'))
     axes[0, 1].set_ylabel('Score', fontsize=12)
     axes[0, 1].set_title('SHAP Box Plot', fontsize=14, fontweight='bold')
     axes[0, 1].grid(alpha=0.3)
     
+    # SHAP: Absolute values with LOG SCALE (NEW!)
     axes[0, 2].hist(np.abs(shap_scores), bins=100, alpha=0.7, color='blue', edgecolor='black')
+    axes[0, 2].set_yscale('log')
     axes[0, 2].axvline(np.median(np.abs(shap_scores)), color='red', linestyle='--', 
                       linewidth=2, label=f'Median: {np.median(np.abs(shap_scores)):.4f}')
     axes[0, 2].set_xlabel('Absolute Score', fontsize=12)
-    axes[0, 2].set_ylabel('Frequency', fontsize=12)
-    axes[0, 2].set_title('SHAP Absolute Value Distribution', fontsize=14, fontweight='bold')
+    axes[0, 2].set_ylabel('Frequency (log scale)', fontsize=12)
+    axes[0, 2].set_title('SHAP Absolute Value Distribution (Log Scale)', fontsize=14, fontweight='bold')
     axes[0, 2].legend()
     axes[0, 2].grid(alpha=0.3)
     
-    # LIME plots
+    # ========================================================================
+    # LIME PLOTS
+    # ========================================================================
+    
+    # LIME: Regular histogram
     axes[1, 0].hist(lime_scores, bins=100, alpha=0.7, color='green', edgecolor='black')
     axes[1, 0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero')
     axes[1, 0].set_xlabel('Score', fontsize=12)
@@ -201,22 +288,29 @@ def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='
     axes[1, 0].legend()
     axes[1, 0].grid(alpha=0.3)
     
+    # LIME: Box plot
     axes[1, 1].boxplot([lime_scores], vert=True, patch_artist=True,
                        boxprops=dict(facecolor='lightgreen'))
     axes[1, 1].set_ylabel('Score', fontsize=12)
     axes[1, 1].set_title('LIME Box Plot', fontsize=14, fontweight='bold')
     axes[1, 1].grid(alpha=0.3)
     
+    # LIME: Absolute values with LOG SCALE (NEW!)
     axes[1, 2].hist(np.abs(lime_scores), bins=100, alpha=0.7, color='green', edgecolor='black')
+    axes[1, 2].set_yscale('log')
     axes[1, 2].axvline(np.median(np.abs(lime_scores)), color='red', linestyle='--',
                       linewidth=2, label=f'Median: {np.median(np.abs(lime_scores)):.4f}')
     axes[1, 2].set_xlabel('Absolute Score', fontsize=12)
-    axes[1, 2].set_ylabel('Frequency', fontsize=12)
-    axes[1, 2].set_title('LIME Absolute Value Distribution', fontsize=14, fontweight='bold')
+    axes[1, 2].set_ylabel('Frequency (log scale)', fontsize=12)
+    axes[1, 2].set_title('LIME Absolute Value Distribution (Log Scale)', fontsize=14, fontweight='bold')
     axes[1, 2].legend()
     axes[1, 2].grid(alpha=0.3)
     
-    # Attention plots
+    # ========================================================================
+    # ATTENTION PLOTS
+    # ========================================================================
+    
+    # Attention: Regular histogram
     axes[2, 0].hist(attention_scores, bins=100, alpha=0.7, color='orange', edgecolor='black')
     axes[2, 0].axvline(np.median(attention_scores), color='red', linestyle='--',
                       linewidth=2, label=f'Median: {np.median(attention_scores):.4f}')
@@ -226,12 +320,14 @@ def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='
     axes[2, 0].legend()
     axes[2, 0].grid(alpha=0.3)
     
+    # Attention: Box plot
     axes[2, 1].boxplot([attention_scores], vert=True, patch_artist=True,
                        boxprops=dict(facecolor='lightyellow'))
     axes[2, 1].set_ylabel('Score', fontsize=12)
     axes[2, 1].set_title('Attention Box Plot', fontsize=14, fontweight='bold')
     axes[2, 1].grid(alpha=0.3)
     
+    # Attention: Log scale histogram (ALREADY HAD THIS)
     axes[2, 2].hist(attention_scores, bins=100, alpha=0.7, color='orange', edgecolor='black')
     axes[2, 2].set_yscale('log')
     axes[2, 2].axvline(np.median(attention_scores), color='red', linestyle='--',
@@ -246,6 +342,7 @@ def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"\nSaved distribution plots to: {output_file}")
     plt.close()
+
 
 def plot_comparison(shap_scores, lime_scores, attention_scores, output_file='threshold_analysis/score_comparison.png'):
     """Create side-by-side comparison plots."""
@@ -428,10 +525,26 @@ def main():
         'attention_explanation_*.pkl',
         max_files=max_files
     )
-    attention_scores = extract_scores_from_explanations(attention_data, 'attention', score_type='mean')
+
+    # Load and analyze all three methods
+    shap_stats = analyze_score_distribution(shap_scores, 'SHAP')
+    print_statistics(shap_stats)
+    suggest_thresholds(shap_stats)
+    
+    lime_stats = analyze_score_distribution(lime_scores, 'LIME')
+    print_statistics(lime_stats)
+    suggest_thresholds(lime_stats)
+
+    attention_scores = extract_scores_from_explanations(attention_data, 'attention', score_type='mean')    
     attention_stats = analyze_score_distribution(attention_scores, 'Attention (mean)')
     print_statistics(attention_stats)
     suggest_thresholds(attention_stats)
+    
+    # ============================================================================
+    # COMPARISON TABLE
+    # ============================================================================
+    print_comparison_table(shap_stats, lime_stats, attention_stats)
+
     
     # ============================================================================
     # CALCULATE MATCHED THRESHOLDS
