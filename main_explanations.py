@@ -18,14 +18,14 @@ def main():
                         required=True)
     parser.add_argument("--subset_size",
                         type=int,
-                        required=True)
+                        required=False)
     parser.add_argument("--start",
                         type=int,
-                        required=True)
+                        required=False)
     parser.add_argument("--set",
                         type=str,
                         choices=["dev", "train"],
-                        required=True)
+                        required=False)
     parser.add_argument("--only_positive",
                         type=bool,
                         required=False)
@@ -36,49 +36,50 @@ def main():
     FINETUNED_CLASSIFICATION_MODEL = "yash3056/Llama-3.2-1B-imdb"
 
 
-    if args.type not in ["formatter", "merge"]:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            FINETUNED_CLASSIFICATION_MODEL,
-            num_labels=2,
-            device_map="auto",   
-            dtype=torch.float16, 
-            output_attentions=True  
-        )
-        model = model.to('cuda')
-        tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
+    if args.type not in ["merge"]:
+        if args.type not in ["formatter"]:
+            model = AutoModelForSequenceClassification.from_pretrained(
+                FINETUNED_CLASSIFICATION_MODEL,
+                num_labels=2,
+                device_map="auto",   
+                dtype=torch.float16, 
+                output_attentions=True  
+            )
+            model = model.to('cuda')
+            tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
-    dataset_train = load_dataset("imdb", split="train")
-    dataset_test = load_dataset("imdb", split="test")
+        dataset_train = load_dataset("imdb", split="train")
+        dataset_test = load_dataset("imdb", split="test")
 
-    dataset_dev = concatenate_datasets([
-        dataset_test.select(range(0, 7500)),
-        dataset_test.select(range(17500, 25000))
-    ])
+        dataset_dev = concatenate_datasets([
+            dataset_test.select(range(0, 7500)),
+            dataset_test.select(range(17500, 25000))
+        ])
 
-    dataset_test = dataset_test.select(range(7500, 17500))
+        dataset_test = dataset_test.select(range(7500, 17500))
 
 
-    # ===== WORK WITH A SUBSET =====
+        # ===== WORK WITH A SUBSET =====
 
-    subset_size = args.subset_size
-    start = args.start
-    end = start + subset_size if args.only_positive else subset_size // 2 + start
+        subset_size = args.subset_size
+        start = args.start
+        end = start + subset_size if args.only_positive else subset_size // 2 + start
 
-    if args.set == 'train':
-        dataset_split = dataset_train
-    if args.set == 'dev':
-        dataset_split = dataset_dev
-    
-    negative_samples = [i for i, label in enumerate(dataset_split['label']) if label == 0][start:end]
-    positive_samples = [i for i, label in enumerate(dataset_split['label']) if label == 1][start:end]
+        if args.set == 'train':
+            dataset_split = dataset_train
+        if args.set == 'dev':
+            dataset_split = dataset_dev
+        
+        negative_samples = [i for i, label in enumerate(dataset_split['label']) if label == 0][start:end]
+        positive_samples = [i for i, label in enumerate(dataset_split['label']) if label == 1][start:end]
 
-    subset_indices = positive_samples if args.only_positive else negative_samples + positive_samples
-    subset_texts = [dataset_split['text'][i] for i in subset_indices]
-    subset_labels = [dataset_split['label'][i] for i in subset_indices]
+        subset_indices = positive_samples if args.only_positive else negative_samples + positive_samples
+        subset_texts = [dataset_split['text'][i] for i in subset_indices]
+        subset_labels = [dataset_split['label'][i] for i in subset_indices]
 
-    print(f"Working with {len(subset_texts)} samples")
-    print(f"Positive: {sum(subset_labels)}")
-    print(f"Negative: {len(subset_labels) - sum(subset_labels)}")
+        print(f"Working with {len(subset_texts)} samples")
+        print(f"Positive: {sum(subset_labels)}")
+        print(f"Negative: {len(subset_labels) - sum(subset_labels)}")
 
     
 

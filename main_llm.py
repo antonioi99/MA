@@ -33,6 +33,10 @@ def main():
     parser.add_argument("--llm",
                         type=str,
                         required=True)
+    parser.add_argument("--explanation",
+                        type=str,
+                        choices=["shap", "lime", "attention"],
+                        required=True)
     args = parser.parse_args()
 
     if args.llm == 'prometheus':
@@ -44,16 +48,17 @@ def main():
         
     
     groups_file = "similarity_groups/similarity_groups.json"
-    dev_data_file = "explanations4NLP/merged_data/merged_data.json"
+    dev_data_file = "explanations/NLP_format/merged_data/merged_data.json"
     dev_data_predictions = "classification_model_predictions/dev_set/predictions.json"
         
     main_folder = 'test_results'
-    model_folder = f'{args.llm}'
-    prompt_folder = f'{args.prompter}'
-    chain_of_thought_folder = f'chain_of_thought_True' if args.chain_of_thought else 'no_chain_of_thought'
+    model_folder = args.llm
+    explanation_folder = args.explanation
+    prompt_folder = args.prompter
+    chain_of_thought_folder = 'chain_of_thought_True' if args.chain_of_thought else 'no_chain_of_thought'
     pred_order_folder = args.pred_order
 
-    dir_results = f'{main_folder}/{model_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
+    dir_results = f'{main_folder}/{model_folder}/{explanation_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
     os.makedirs(dir_results, exist_ok=True)
 
     # end = args.start + args.data_size
@@ -69,7 +74,8 @@ def main():
         start=args.start,
         chain_of_thought=args.chain_of_thought,
         use_explanations=False if args.explanation_format == 'baseline' else True,
-        explanation_format=f"{args.explanation_format}",
+        explanation_format=args.explanation_format,
+        explanation_type=args.explanation,
         output_file=output_file,
         model_name=model_name,
         max_new_tokens=args.max_new_tokens,

@@ -25,8 +25,10 @@ load_env_file()
 class DataConfig:
     """Configuration for the experiment"""
     explanation_format: Literal["text_scores", "text_labels", "structured_text_scores", 
-                                  "structured_text_labels", "top_words_scores", "top_words_labels", "none"]
+                                  "structured_text_labels", "top_words_scores", "top_words_labels", "natural_words",
+                                  "part_of_speech", "none"]
     use_explanations: bool
+    explanation_type: Literal["lime", "shap", "attention"]
     
 class DataLoader:
 
@@ -75,8 +77,9 @@ class DataLoader:
     
     def get_dev_instance(self,
                         dev_id: int, 
-                        include_explanation: bool = False, 
-                        explanation_format: str = "text_labels") -> Dict:
+                        include_explanation: bool, 
+                        explanation_format: str,
+                        explanation_type: str) -> Dict:
         """
         Get a dev instance with optional SHAP explanation.
         
@@ -104,7 +107,7 @@ class DataLoader:
         }
         
         if include_explanation and explanation_format != "none":
-            result['explanation'] = dev_instance['shap'][explanation_format]
+            result['explanation'] = dev_instance[explanation_type][explanation_format]
         
         return result
     
@@ -126,7 +129,8 @@ class DataLoader:
             dev_instance = self.get_dev_instance(
                 dev_id, 
                 include_explanation=config.use_explanations,
-                explanation_format=config.explanation_format
+                explanation_format=config.explanation_format,
+                explanation_type=config.explanation_type
             )
             
             example_text = f"Example {i}:\n"
@@ -586,6 +590,7 @@ def test_experiment(groups_file: str,
                    start: int,
                    explanation_format: str,
                    use_explanations: bool,
+                   explanation_type: str,
                    output_file: str,
                    max_new_tokens: int,
                    model_name: str,
@@ -617,7 +622,8 @@ def test_experiment(groups_file: str,
     # Create config
     config = DataConfig(
         explanation_format=explanation_format,
-        use_explanations=use_explanations
+        use_explanations=use_explanations,
+        explanation_type=explanation_type
     )
     
     # Get test IDs (limit to num_test_instances)
