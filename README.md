@@ -31,7 +31,29 @@ improved accuracy when provided with explanations.
 
 # Classifier Predictions
 
-To get classifier ("yash3056/Llama-3.2-1B-imdb") predictions run the following lines:
+To get classifier ("yash3056/Llama-3.2-1B-imdb") predictions, run the following lines:
 ```
 python main_classification_model.py --split dev
+python main_classification_model.py --split test
 ```
+This will save the dev and test set predictions together with the golden labels in separate .json files in the `classification_model_prediction` folder. These predictions are necessary to calculate LLM-as-a-judge accuracy.
+
+# Explanations (SHAP, LIME, ATTENTION)
+
+To get explanations, run the following lines:
+```
+python main_explanations.py --type shap --subset_size 15000 --start 0 --set dev
+python main_explanations.py --type lime --subset_size 15000 --start 0 --set dev
+python main_explanations.py --type attention --subset_size 15000 --start 0 --set dev
+```
+This will save the different explanations for the dev set in separate .pkl files in the folder `explanations/pkl`.
+To convert explanations in NLP format, run e.g. the following lines:
+```
+python main_explanations.py --type formatter --subset_size 7500 --start 0 --set dev
+python main_explanations.py --type formatter --subset_size 7500 --start 7500 --set dev
+```
+This will convert explanations in 8 different NLP formats, saving them in separate .json files in the folder `explanations/NLP_format`. To conduct the experiment later you will just one single file with all converted explanations inside (=a file that merges all the files in the folder `explanations/NLP_format`). Run then the following line to have just one .json file containing every type of explanation for each instance in the dev set:
+```
+python main_explanations.py --type merge
+```
+This will save all explanations in NLP format in the file `explanations/NLP_format/merged_data/merged_data.json`
