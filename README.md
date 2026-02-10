@@ -112,8 +112,6 @@ for pred_order in "pos_neg" "neg_pos"; do for format in "baseline" "text_scores"
 This will save a .json file for each specific configuration with the predictions of the judging LLM at e.g. `test_results/llama/attention/single/no_chain_of_thought/neg_pos/structured_text_labels.json`.
 The following is the first entry of the mentioned file:
 ```
-[
-    [
     {
         "test_id": "0",
         "prompt": "###Task Description:\n    You are given 4 examples of movie reviews with the predictions made by a sentiment classification model. The predictions are 'NEGATIVE' or 'POSITIVE'. Each example includes an explanation showing which parts of the text influenced the model's decision. \n    Your task is to analyze the model's behavior pattern and predict what the model would output for a new test review.\n\n    ###Examples from the model:\n    [DEV_EXAMPLES]\n\n    ###Test Review:\n    [TEST_INSTANCE]\n\n    ###Question:\n    Based on the model's behavior in the examples above, what would this classification model predict for the test review?\n\n    ###Answer (reply only with 'NEGATIVE' or 'POSITIVE'):\n    ",
@@ -130,7 +128,5 @@ The following is the first entry of the mentioned file:
             "use_explanations": true,
             "explanation_format": "structured_text_labels"
         }
-    },
-    ...
-]
+    }
 ```
