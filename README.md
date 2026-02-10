@@ -46,14 +46,42 @@ python main_explanations.py --type shap --subset_size 15000 --start 0 --set dev
 python main_explanations.py --type lime --subset_size 15000 --start 0 --set dev
 python main_explanations.py --type attention --subset_size 15000 --start 0 --set dev
 ```
-This will save the different explanations for the dev set in separate .pkl files in the folder `explanations/pkl`.
-To convert explanations in NLP format, run e.g. the following lines:
+This will save the different explanations for the dev set in separate .pkl files in the `explanations/pkl` folder.
+To convert the explanations into NLP format, run the following lines, for example:
 ```
 python main_explanations.py --type formatter --subset_size 7500 --start 0 --set dev
 python main_explanations.py --type formatter --subset_size 7500 --start 7500 --set dev
 ```
-This will convert explanations in 8 different NLP formats, saving them in separate .json files in the folder `explanations/NLP_format`. To conduct the experiment later you will just one single file with all converted explanations inside (=a file that merges all the files in the folder `explanations/NLP_format`). Run then the following line to have just one .json file containing every type of explanation for each instance in the dev set:
+This will convert the explanations into 8 different NLP formats, saving them in separate .json files in the `explanations/NLP_format` folder. To conduct the experiment later, you will need just a single file containing all converted explanations (i.e., a file that merges all the files in the `explanations/NLP_format` folder). Run the following line to produce a single .json file containing every type of explanation for each instance in the dev set:
 ```
 python main_explanations.py --type merge
 ```
-This will save all explanations in NLP format in the file `explanations/NLP_format/merged_data/merged_data.json`
+This will save all explanations in NLP format in the file `explanations/NLP_format/merged_data/merged_data.json`.
+
+# Similariy Groups
+
+As mentioned in the introduction, the judging llms will be shown 4 instances from the dev set for each instance of the test set. The grouping strategy is based on cosine similariy scores and balanced labelling (2 instances need to be positive and 2 negative). To create the similariy groups, run the following line:
+```
+python main_similarity_groups.py
+```
+This will save the groups in the `similarity_groups/similarity_groups.json` file. This is the first entry of the file e.g.:
+```
+{
+    "0": {
+        "test_instance": "this is the review number with id 0",
+        "dev_group": [
+            12709,
+            342,
+            8599,
+            8613
+        ],
+        "dev_predictions": [
+            1,
+            0,
+            1,
+            0
+        ]
+    },
+    ...
+}
+```
