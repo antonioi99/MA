@@ -657,13 +657,23 @@ class McNemarAnalyzer:
         """
         Generate all possible configuration combinations
         """
-        llms = ['llama', 'qwen', 'prometheus']
-        task_types = ['single', 'pairwise']
+        llms = ['llama', 'qwen']
+        task_types = ['single']
         promptings = ['neg_pos', 'pos_neg']
         explanation_types = ['attention', 'lime', 'shap']
         CoT = ['chain_of_thought_True', 'no_chain_of_thought']
         
         configs = []
+        for llm in llms:
+            for task_type in task_types:
+                for prompting in promptings:
+                    for explanation_type in explanation_types:
+                        for cot in CoT:
+                            configs.append(ExperimentConfig(llm, task_type, cot, prompting, explanation_type))
+
+
+        llms = ['prometheus']
+        task_types = ['pairwise']
         for llm in llms:
             for task_type in task_types:
                 for prompting in promptings:
@@ -691,8 +701,8 @@ class McNemarAnalyzer:
             Dictionary with aggregated accuracy metrics and test results
         """
         # Get both configurations
-        config_pos_neg = ExperimentConfig(llm, explanation_type, task_type, cot, 'pos_neg')
-        config_neg_pos = ExperimentConfig(llm, explanation_type, task_type, cot, 'neg_pos')
+        config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg', explanation_type)
+        config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos', explanation_type)
         
         # Get correctness arrays for both prompting strategies (filtered to common IDs)
         correct_baseline_pos_neg, correct_test_pos_neg, common_ids_pos_neg = \
@@ -783,8 +793,8 @@ class McNemarAnalyzer:
         for format_name in self.EXPLANATION_FORMATS:
             if format_name == "baseline":
                 # Baseline row: average baseline accuracy from both prompting strategies
-                config_pos_neg = ExperimentConfig(llm, explanation_type, task_type, cot, 'pos_neg')
-                config_neg_pos = ExperimentConfig(llm, explanation_type, task_type, cot, 'neg_pos')
+                config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg', explanation_type)
+                config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos', explanation_type)
                 
                 baseline_data_pos_neg = self.load_results(config_pos_neg, "baseline")
                 baseline_data_neg_pos = self.load_results(config_neg_pos, "baseline")
@@ -858,7 +868,7 @@ class McNemarAnalyzer:
                             results_df = self.analyze_configuration_aggregated(llm, task_type, cot, exp)
                             
                             # Create a pseudo-config for naming
-                            avg_config = ExperimentConfig(llm, task_type, cot, exp, 'aggregated')
+                            avg_config = ExperimentConfig(llm, task_type, cot, 'aggregated', exp)
                             
                             # Save individual LaTeX file
                             individual_file = os.path.join(output_dir, f"results_{avg_config}.tex")

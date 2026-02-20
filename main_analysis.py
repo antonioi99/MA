@@ -24,7 +24,10 @@ def main():
                                           'classification_model_predictions/test_set/predictions.json',
                                           save_to=f'{analysis_main_folder}/{subdirectory}/results_{exp_format}.json')
         except FileNotFoundError:
-            print(f"Skipping: {subdirectory}/{exp_format}.json (file not found)")
+            expected_missing = (prompt == 'single' and model == 'prometheus') or \
+                            (prompt == 'pairwise' and model != 'prometheus')
+            if not expected_missing:
+                print(f"Skipping: {subdirectory}/{exp_format}.json (file not found)")
             continue
 
 
