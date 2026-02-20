@@ -247,13 +247,14 @@ class ExperimentConfig:
     task_type: str  # single, pairwise
     cot: str  # no_chain_of_thought, chain_of_thought_True
     prompting: str  # neg_pos, pos_neg
+    explanation: str # shap, attention, lime
     
     def __str__(self):
-        return f"{self.llm}_{self.task_type}_{self.cot}_{self.prompting}"
+        return f"{self.llm}_{self.explanation}_{self.task_type}_{self.cot}_{self.prompting}"
     
     def to_label(self):
         """Generate a valid LaTeX label"""
-        return f"tab:{self.llm}-{self.task_type}-{self.cot}-{self.prompting}"
+        return f"tab:{self.llm}-{self.explanation}-{self.task_type}-{self.cot}-{self.prompting}"
 
 
 class McNemarAnalyzer:
@@ -275,7 +276,7 @@ class McNemarAnalyzer:
         
     def get_file_path(self, config: ExperimentConfig, format_name: str) -> str:
         """Construct file path for a given configuration and format"""
-        return os.path.join(self.base_path, config.llm, config.task_type, 
+        return os.path.join(self.base_path, config.llm, config.explanation, config.task_type, 
                            config.cot, config.prompting, f"results_{format_name}.json")
     
     def load_results(self, config: ExperimentConfig, format_name: str) -> Dict:
@@ -658,20 +659,22 @@ class McNemarAnalyzer:
         """
         llms = ['llama', 'qwen', 'prometheus']
         task_types = ['single', 'pairwise']
-        cots = ['no_chain_of_thought', 'chain_of_thought_True']
         promptings = ['neg_pos', 'pos_neg']
+        explanation_types = ['attention', 'lime', 'shap']
+        CoT = ['chain_of_thought_True', 'no_chain_of_thought']
         
         configs = []
         for llm in llms:
             for task_type in task_types:
-                for cot in cots:
-                    for prompting in promptings:
-                        configs.append(ExperimentConfig(llm, task_type, cot, prompting))
+                for prompting in promptings:
+                    for explanation_type in explanation_types:
+                        for cot in CoT:
+                            configs.append(ExperimentConfig(llm, task_type, cot, prompting, explanation_type))
         
         return configs
     
     def compare_formats_aggregated(self, llm: str, task_type: str, cot: str,
-                                baseline_format: str, test_format: str) -> Dict:
+                                    baseline_format: str, test_format: str, explanation_type: str) -> Dict:
         """
         Compare two formats using McNemar's test with aggregated contingency tables
         across both prompting strategies (pos_neg and neg_pos).
@@ -688,8 +691,8 @@ class McNemarAnalyzer:
             Dictionary with aggregated accuracy metrics and test results
         """
         # Get both configurations
-        config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg')
-        config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos')
+        config_pos_neg = ExperimentConfig(llm, explanation_type, task_type, cot, 'pos_neg')
+        config_neg_pos = ExperimentConfig(llm, explanation_type, task_type, cot, 'neg_pos')
         
         # Get correctness arrays for both prompting strategies (filtered to common IDs)
         correct_baseline_pos_neg, correct_test_pos_neg, common_ids_pos_neg = \
@@ -763,7 +766,7 @@ class McNemarAnalyzer:
             'significant': mcnemar_result.pvalue < 0.05
         }
 
-    def analyze_configuration_aggregated(self, llm: str, task_type: str, cot: str) -> pd.DataFrame:
+    def analyze_configuration_aggregated(self, llm: str, task_type: str, cot: str, explanation_type: str) -> pd.DataFrame:
         """
         Analyze all explanation formats against baseline with aggregated prompting strategies
         
@@ -780,8 +783,8 @@ class McNemarAnalyzer:
         for format_name in self.EXPLANATION_FORMATS:
             if format_name == "baseline":
                 # Baseline row: average baseline accuracy from both prompting strategies
-                config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg')
-                config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos')
+                config_pos_neg = ExperimentConfig(llm, explanation_type, task_type, cot, 'pos_neg')
+                config_neg_pos = ExperimentConfig(llm, explanation_type, task_type, cot, 'neg_pos')
                 
                 baseline_data_pos_neg = self.load_results(config_pos_neg, "baseline")
                 baseline_data_neg_pos = self.load_results(config_neg_pos, "baseline")
@@ -805,7 +808,7 @@ class McNemarAnalyzer:
             else:
                 # Compare format against baseline with aggregated tables
                 comparison = self.compare_formats_aggregated(llm, task_type, cot, 
-                                                            "baseline", format_name)
+                                                            "baseline", format_name, explanation_type)
                 
                 row = {
                     'baseline': comparison['accuracy_baseline'],
@@ -842,30 +845,32 @@ class McNemarAnalyzer:
         llms = ['llama', 'qwen', 'prometheus']
         task_types = ['single', 'pairwise']
         cots = ['no_chain_of_thought', 'chain_of_thought_True']
+        explanation_types = ['attention', 'lime', 'shap']
         
         successful_analyses = 0
         
         for llm in llms:
             for task_type in task_types:
                 for cot in cots:
-                    try:
-                        # Analyze configuration with aggregated prompting
-                        results_df = self.analyze_configuration_aggregated(llm, task_type, cot)
-                        
-                        # Create a pseudo-config for naming
-                        avg_config = ExperimentConfig(llm, task_type, cot, 'aggregated')
-                        
-                        # Save individual LaTeX file
-                        individual_file = os.path.join(output_dir, f"results_{avg_config}.tex")
-                        self.save_latex_table(results_df, avg_config, individual_file)
-                        
-                        successful_analyses += 1
-                        
-                    except FileNotFoundError as e:
-                        print(f"Skipping {llm}-{task_type}-{cot}: {e}")
-                    except Exception as e:
-                        print(f"Error processing {llm}-{task_type}-{cot}: {e}")
-        
+                    for exp in explanation_types:
+                        try:
+                            # Analyze configuration with aggregated prompting
+                            results_df = self.analyze_configuration_aggregated(llm, task_type, cot, exp)
+                            
+                            # Create a pseudo-config for naming
+                            avg_config = ExperimentConfig(llm, task_type, cot, exp, 'aggregated')
+                            
+                            # Save individual LaTeX file
+                            individual_file = os.path.join(output_dir, f"results_{avg_config}.tex")
+                            self.save_latex_table(results_df, avg_config, individual_file)
+                            
+                            successful_analyses += 1
+                            
+                        except FileNotFoundError as e:
+                            print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                        except Exception as e:
+                            print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+            
         # Save combined file
         combined_file = os.path.join(output_dir, "all_results_aggregated.tex")
         self.save_all_latex_tables(combined_file)

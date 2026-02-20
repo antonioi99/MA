@@ -6,16 +6,17 @@ def main():
 
     analysis_main_folder = 'analysis'
 
-    CoT = ['chain_of_thought_True', 'no_chain_of_thought']
-    pred_order = ['pos_neg', 'neg_pos']
-    prompter = ['single', 'pairwise']
+    # CoT = ['chain_of_thought_True', 'no_chain_of_thought']
     llm = ['prometheus', 'qwen', 'llama']
+    explanation_type = ["shap", "attention", "lime"]
+    prompter = ['single', 'pairwise']
+    pred_order = ['pos_neg', 'neg_pos']
     explanation_formats = ["baseline", "text_scores", "text_labels", "structured_text_scores", 
                            "structured_text_labels", "top_words_scores", "top_words_labels", 
                            "natural_words", "part_of_speech"]
 
-    for cot, order, prompt, model, exp_format in product(CoT, pred_order, prompter, llm, explanation_formats):
-        subdirectory = f"{model}/{prompt}/{cot}/{order}"
+    for model, explanation, prompt, order, exp_format  in product(llm, explanation_type, prompter, pred_order, explanation_formats):
+        subdirectory = f"{model}/{explanation}/{prompt}/no_chain_of_thought/{order}"
         os.makedirs(f"{analysis_main_folder}/{subdirectory}", exist_ok=True)
 
         try:
