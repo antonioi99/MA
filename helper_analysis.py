@@ -623,6 +623,7 @@ class McNemarAnalyzer:
         Args:
             output_dir: Directory to save output files
         """
+        print(f"\n{'='*80}")
         os.makedirs(output_dir, exist_ok=True)
         
         all_configs = self.get_all_configurations()
@@ -661,7 +662,8 @@ class McNemarAnalyzer:
         task_types = ['single']
         promptings = ['neg_pos', 'pos_neg']
         explanation_types = ['attention', 'lime', 'shap']
-        CoT = ['chain_of_thought_True', 'no_chain_of_thought']
+        # CoT = ['chain_of_thought_True', 'no_chain_of_thought'] #chain of though is not being used
+        CoT = ['no_chain_of_thought']
         
         configs = []
         for llm in llms:
@@ -877,9 +879,23 @@ class McNemarAnalyzer:
                             successful_analyses += 1
                             
                         except FileNotFoundError as e:
-                            print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                        # Only log for no_chain_of_thought; chain_of_thought configs are not used in this experiment
+                            if cot == 'no_chain_of_thought':
+                                if llm == 'prometheus':
+                                    if task_type == 'pairwise':
+                                        print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                                else:
+                                    if task_type == 'single':
+                                        print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
                         except Exception as e:
-                            print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+                            if cot == 'no_chain_of_thought':
+                                if llm == 'prometheus':
+                                    if task_type == 'pairwise':
+                                        print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+                                else:
+                                    if task_type == 'single':
+                                        print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+
             
         # Save combined file
         combined_file = os.path.join(output_dir, "all_results_aggregated.tex")
