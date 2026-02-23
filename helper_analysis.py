@@ -528,7 +528,7 @@ class McNemarAnalyzer:
         
         # Generate caption
         caption = (f"McNemar's Test: {config.llm.upper()} - "
-                f"{config.task_type.title()} - "
+                f"{config.explanation.title()} - "
                 f"{'CoT' if 'True' in config.cot else 'No CoT'} - "
                 f"{config.prompting.replace('_', ' ')}")
         
