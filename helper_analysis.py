@@ -547,8 +547,8 @@ class McNemarAnalyzer:
         latex_lines.append(r'\midrule')
         
         # First row - baseline
-        first_row = df.iloc[0]
-        latex_lines.append(f'Baseline & {format_value(first_row["baseline"])} & -- & -- & -- \\\\')
+        # first_row = df.iloc[0]
+        # latex_lines.append(f'Baseline & {format_value(first_row["baseline"])} & -- & -- & -- \\\\')
         
         # Data rows - only non-baseline
         for idx, row in df.iloc[1:].iterrows():
