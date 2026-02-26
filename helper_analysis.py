@@ -522,9 +522,9 @@ class McNemarAnalyzer:
             if is_pvalue:
                 return f'{val:.4f}'
             elif is_change:
-                return f'{val*100:.2f}\\%'  # Percentage symbol with single backslash
+                return f'{val*100:.2f}' 
             else:  # accuracy as decimal
-                return f'{val:.4f}'
+                return f'{val*100:.2f}'
         
         # Generate caption
         caption = (f"McNemar's Test: {config.llm.upper()} - "
@@ -542,7 +542,7 @@ class McNemarAnalyzer:
         latex_lines.append(r'\toprule')
         
         # Simplified header - use \% directly in raw string
-        header = r'Format & Baseline & Accuracy & Change (\%) & p-value \\'
+        header = r'Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\'
         latex_lines.append(header)
         latex_lines.append(r'\midrule')
         
