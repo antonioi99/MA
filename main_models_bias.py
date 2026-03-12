@@ -50,6 +50,12 @@ for model_name in tqdm(MODELS, desc="Models", position=0):
             max_length=512,
         )
 
+        # Fix missing pad token for causal/generative models
+        # (same approach used in LLMInference.generate via pad_token_id=eos_token_id)
+        if pipe.tokenizer.pad_token_id is None:
+            pipe.tokenizer.pad_token_id = pipe.model.config.eos_token_id
+            print(f"  Set pad_token_id = eos_token_id ({pipe.tokenizer.pad_token_id})")
+
         preds = []
         n_chunks = math.ceil(len(texts) / CHUNK_SIZE)
         for i in tqdm(range(0, len(texts), CHUNK_SIZE), total=n_chunks, desc=f"  Classifying", position=1, leave=False):
@@ -81,3 +87,5 @@ print("\n=== Bias Summary ===")
 for model, r in results.items():
     if "error" not in r:
         print(f"{model}: pos_ratio={r['pos_ratio']:.2%}, accuracy={r['accuracy']:.2%}")
+    else:
+        print(f"{model}: ERROR - {r['error']}")

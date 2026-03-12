@@ -102,8 +102,8 @@ def main():
 
         masker_shap = shap.maskers.Text(
             tokenizer=tokenizer,
-            mask_token="<pad>", # this is what "deleted/masked" words are replaced with. there may be a more appropriate choice for your task and model (depends on how it was fine-tuned)
-            collapse_mask_token=True, # will collapse "This is <pad> <pad>" to "This is <pad>"
+            mask_token="<pad>",
+            collapse_mask_token=True, 
             output_type="string"
         )
 
