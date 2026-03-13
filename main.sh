@@ -11,7 +11,7 @@
 #SBATCH --container-workdir=/srv/home/users/a12225670cs/MA
 # #SBATCH --nodes=1
 # #SBATCH --partition=p_csunivie_gres
-# #SBATCH --partition=p_csunivie
+#SBATCH --partition=p_low
 #SBATCH --requeue
 #SBATCH --container-writable
 
@@ -28,5 +28,5 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_models_bias.py
+python main_explanations.py --subset_size 15000 --start 0 --type shap
 

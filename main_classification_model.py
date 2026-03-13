@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -14,6 +14,9 @@ def main():
                         type=str,
                         choices=['dev', 'test'],
                         required=True)
+    parser.add_argument("--dataset",
+                        type=str,
+                        default="antonio4210/imdb-dev-test-split")
     args = parser.parse_args()
 
     # Check if GPU is available
@@ -28,31 +31,17 @@ def main():
     
     # Move model to GPU
     model.to(device)
-    model.eval()  
+    model.eval()
 
     # Tokenize the dataset
     def tokenize_function(examples):
         return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
-    
-    dataset_test = load_dataset("imdb", split="test")
 
-    # Load dataset
-    if args.split == 'dev':
-        dataset_dev = concatenate_datasets([
-            dataset_test.select(range(0, 7500)),
-            dataset_test.select(range(17500, 25000))
-        ])
-        true_labels = dataset_dev["label"]
-        tokenized_dataset = dataset_dev.map(tokenize_function, batched=True)
-
-
-    if args.split == 'test':
-        dataset_test = dataset_test.select(range(7500, 17500))
-        true_labels = dataset_test["label"]
-        tokenized_dataset = dataset_test.map(tokenize_function, batched=True)
-    
-
-    
+    # Load the requested split directly from your personal dataset
+    dataset = load_dataset(args.dataset, split=args.split)
+    true_labels = dataset["label"]
+    doc_ids = dataset["id"]
+    tokenized_dataset = dataset.map(tokenize_function, batched=True)
     
     tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
     
@@ -73,12 +62,10 @@ def main():
             
             predictions.extend(preds.cpu().numpy().tolist())
     
-    
-    # Create results dictionary
+    # Create results dictionary keyed by MD5 document ID
     results = {}
-    for idx, (prediction, label) in enumerate(zip(predictions, true_labels)):
-        test_idx = idx  # Adjust index to match original dataset
-        results[test_idx] = {
+    for doc_id, prediction, label in zip(doc_ids, predictions, true_labels):
+        results[doc_id] = {
             'prediction': int(prediction),
             'label': int(label)
         }
@@ -96,8 +83,7 @@ def main():
     accuracy = sum([1 for pred, true in zip(predictions, true_labels) if pred == true]) / len(predictions)
     print(f"\nTotal predictions: {len(predictions)}")
     print(f"Accuracy: {accuracy:.4f}")
-    print(f"Results saved to 'predictions.json'")
-    
+    print(f"Results saved to '{json_predictions}'")
 
 
 if __name__ == '__main__':

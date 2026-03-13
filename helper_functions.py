@@ -592,51 +592,35 @@ class ExplanationProcessor:
         attention_pkl_dir: str,
         samples: List[str],
         labels: List[int],
-        subset_indices: List[int],
         output_json: str, 
         threshold_shap: float,
         threshold_random: float,
         threshold_lime: float,
         threshold_attention: float
     ):
-        """
-        Read SHAP, random SHAP, LIME, and Attention pkl files and create the final JSON structure
-        
-        Args:
-            shap_pkl_dir: Directory containing shap_values_*.pkl files
-            shap_random_pkl_dir: Directory containing shap_values_random_*.pkl files
-            lime_pkl_dir: Directory containing lime_values_*.pkl files (can be None)
-            attention_pkl_dir: Directory containing attention_explanation_*.pkl files (can be None)
-            samples: List of sample texts
-            labels: List of true labels
-            subset_indices: List of indices to process
-            output_json: Output JSON file path
-            threshold_real: Threshold for SHAP/LIME
-            threshold_random: Threshold for random SHAP
-            threshold_attention: Threshold for attention scores
-        """
         data_dict = {}
         shap_dir = Path(shap_pkl_dir)
         shap_random_dir = Path(shap_random_pkl_dir)
         lime_dir = Path(lime_pkl_dir) if lime_pkl_dir else None
         attention_dir = Path(attention_pkl_dir) if attention_pkl_dir else None  
         
-        for idx, sample_idx in enumerate(subset_indices):
+        for idx, sample in enumerate(samples):
+
+            # Derive doc_hash from document content
+            doc_hash = hashlib.md5(sample.encode("utf-8")).hexdigest()
+
             # Load SHAP explanation (raw)
-            shap_pkl_path = shap_dir / f"shap_values_{sample_idx}.pkl"
-            
+            shap_pkl_path = shap_dir / f"shap_{doc_hash}.pkl"
             if not shap_pkl_path.exists():
-                print(f"Warning: SHAP file not found for index {sample_idx}")
+                print(f"Warning: SHAP file not found for doc_hash {doc_hash}")
                 continue
-            
             shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
             shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_shap)
             
             # Load SHAP random explanation
-            shap_random_pkl_path = shap_random_dir / f"shap_values_random_{sample_idx}.pkl"
-            
+            shap_random_pkl_path = shap_random_dir / f"shap_random_{doc_hash}.pkl"
             if not shap_random_pkl_path.exists():
-                print(f"Warning: SHAP random file not found for index {sample_idx}")
+                print(f"Warning: SHAP random file not found for doc_hash {doc_hash}")
                 shap_random_formatted = {}
             else:
                 shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
@@ -645,26 +629,26 @@ class ExplanationProcessor:
             # Load LIME explanation (if available)
             lime_formatted = {}
             if lime_dir:
-                lime_pkl_path = lime_dir / f"lime_explanation_{sample_idx}.pkl"
+                lime_pkl_path = lime_dir / f"lime_{doc_hash}.pkl"
                 if lime_pkl_path.exists():
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
                     lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_lime)
                 else:
-                    print(f"Warning: LIME file not found for index {sample_idx}")
+                    print(f"Warning: LIME file not found for doc_hash {doc_hash}")
             
             # Load Attention explanation (if available) 
             attention_formatted = {}
             if attention_dir:
-                attention_pkl_path = attention_dir / f"attention_explanation_{sample_idx}.pkl"
+                attention_pkl_path = attention_dir / f"attention_{doc_hash}.pkl"
                 if attention_pkl_path.exists():
                     attention_explanation = self.load_explanation_from_pkl(attention_pkl_path)
                     attention_formatted = self.process_single_explanation(attention_explanation, 'attention', threshold=threshold_attention)
                 else:
-                    print(f"Warning: Attention file not found for index {sample_idx}")
+                    print(f"Warning: Attention file not found for doc_hash {doc_hash}")
             
             # Build the data structure
-            data_dict[int(sample_idx)] = {
-                "sample": str(samples[idx]),
+            data_dict[doc_hash] = {
+                "sample": str(sample),
                 "label": int(labels[idx]),
                 "shap": shap_formatted,
                 "shap_random": shap_random_formatted,
@@ -719,31 +703,17 @@ def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dic
 
 def lime_explainer(model, tokenizer):
     """
-    LIME explainer that works directly with the LLaMA model
+    Returns the predict_probs function for LIME
     """
-
     from lime import lime_text
-    from lime.lime_text import LimeTextExplainer
 
     def predict_probs(list_of_texts):
-        """
-        Wrapper function that takes a list of text strings and returns probabilities
-        """
-        # Use the same prediction function as SHAP
         logits = predict_fast(documents=list_of_texts, model=model, tokenizer=tokenizer)
-        
-        # Convert logits to probabilities using softmax
         import torch
         probabilities = torch.nn.functional.softmax(torch.tensor(logits), dim=-1).numpy()
-        
         return probabilities
 
-    # Create LIME text explainer
-    explainer = lime_text.LimeTextExplainer(
-        class_names=['Negative', 'Positive'],
-    )
-
-    return explainer, predict_probs
+    return predict_probs
 
 
 def create_similarity_groups_from_data(json_file_path, predictions_json, output_json_path, test_texts, test_ids, max_features=5000):
