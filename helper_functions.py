@@ -10,7 +10,7 @@ import os
 import pickle
 import random
 import json
-
+import hashlib
 
 def predict_fast(documents, model, tokenizer, batch_size=64):
 
