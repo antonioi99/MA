@@ -52,9 +52,6 @@ class DataLoader:
         with open(dev_data_predictions, 'r') as f:
             self.dev_data_predictions = json.load(f)
         
-
-        self.dev_data = {int(k): v for k, v in self.dev_data.items()}
-        self.dev_data_predictions = {int(k): v for k, v in self.dev_data_predictions.items()}
         
         print(f"Loaded {len(self.groups)} test instances")
         print(f"Loaded {len(self.dev_data)} dev instances")
@@ -595,19 +592,7 @@ def test_experiment(groups_file: str,
                    max_new_tokens: int,
                    model_name: str,
                    llm_prompter: str):
-    """
-    Test the experiment on a limited number of instances.
-    
-    Args:
-        groups_file: Path to groups JSON
-        dev_data_file: Path to dev data JSON
-        num_test_instances: Number of test instances to process
-        explanation_format: Which SHAP format to use
-        use_explanations: Whether to include explanations
-        output_file: Where to save results
-        model_name: LLM model to use
-    """
-    # Initialize experiment
+
     print("Initializing experiment...")
     experiment = DataLoader(groups_file, dev_data_file, dev_data_predictions)
     if llm_prompter == 'single':
@@ -615,18 +600,15 @@ def test_experiment(groups_file: str,
     elif llm_prompter == 'pairwise':
         prompter = LLMPrompter_pairwise(experiment, pred_order)
     
-    # Initialize LLM
     print("\nInitializing LLM...")
     llm = LLMInference(max_new_tokens=max_new_tokens, model_name=model_name)
     
-    # Create config
     config = DataConfig(
         explanation_format=explanation_format,
         use_explanations=use_explanations,
         explanation_type=explanation_type
     )
     
-    # Get test IDs (limit to num_test_instances)
     all_test_ids = experiment.get_all_test_ids()
     end = start + num_test_instances
     test_ids = all_test_ids[start:end]
@@ -637,16 +619,23 @@ def test_experiment(groups_file: str,
     print(f"  - Test instances: {len(test_ids)}")
     print(f"  - Output file: {output_file}\n")
     
-    # Store results
+    # Load existing results if file exists
     results = []
-
+    processed_ids = set()
     if os.path.exists(output_file):
         with open(output_file, 'r') as f:
             results = json.load(f)
-    
-    # Run predictions for each test instance
+        # Build set of already processed test IDs to skip them
+        processed_ids = {r['test_id'] for r in results if 'test_id' in r}
+        print(f"Resuming from existing file — {len(processed_ids)} instances already processed")
+
     for i, test_id in enumerate(tqdm(test_ids, desc="Processing"), 1):
-        
+
+        # Skip if already processed
+        if test_id in processed_ids:
+            tqdm.write(f"Skipping {test_id} (already processed)")
+            continue
+
         result = run_single_prediction(
             experiment=experiment,
             prompter=prompter,
@@ -661,16 +650,10 @@ def test_experiment(groups_file: str,
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=4)
              
-        # Clear cache to ensure independence
         llm.clear_cache()
             
-    
-    # Save results
     print(f"\n\nSaving results to {output_file}...")
-    # with open(output_file, 'w') as f:
-    #     json.dump(results, f, indent=2)
     
-    # Print summary
     successful = [r for r in results if 'predicted_label_LLM' in r and r['predicted_label_LLM'] is not None]
     failed = [r for r in results if 'error' in r or r.get('predicted_label_LLM') is None]
     
