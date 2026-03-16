@@ -664,20 +664,19 @@ class ExplanationProcessor:
 
 
 
-def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dict]:
+def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[str, dict]:
     """
-    Merge all JSON files in a folder into one dictionary, ordered by integer keys.
+    Merge all JSON files in a folder into one dictionary.
     
     Args:
         folder_path: Path to folder containing JSON files
         
     Returns:
-        Dictionary with integer keys in ascending order
+        Dictionary with hash string keys
     """
     folder = Path(folder_path)
     merged_data = {}
     
-    # Get all JSON files in the folder
     json_files = sorted(folder.glob("explanations*"))
     
     if not json_files:
@@ -686,20 +685,13 @@ def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[int, dic
     
     print(f"Found {len(json_files)} JSON files")
     
-    # Load and merge all JSON files
     for file_path in json_files:
         print(f"Loading {file_path.name}...")
         with open(file_path, 'r') as f:
             data = json.load(f)
             merged_data.update(data)
     
-    sorted_data = dict(sorted(
-        merged_data.items(),
-        key=lambda x: int(x[0])
-    ))
-    
-    return sorted_data
-
+    return merged_data
 
 def lime_explainer(model, tokenizer):
     """
@@ -717,27 +709,9 @@ def lime_explainer(model, tokenizer):
 
 
 def create_similarity_groups_from_data(json_file_path, predictions_json, output_json_path, test_texts, test_ids, max_features=5000):
-    """
-    Create similarity groups using test set from IMDB and dev set from JSON file.
-    
-    Args:
-        json_file_path: Path to JSON file containing dev set texts
-        predictions_json: Path to JSON file containing dev_set_predictions
-        output_json_path: Path to save the output JSON file
-        test_texts: texts form the test set
-        max_features: Maximum features for TF-IDF vectorizer
-    
-    Returns:
-        Dictionary mapping test_id -> {
-            "test_instance": text,
-            "dev_group": [list of dev instance IDs],
-            "dev_predictions": [list of corresponding dev predictions]
-        }
-    """
-    
+
     print(f"Test set size: {len(test_texts)}")
     
-    # Load dev set from JSON
     print(f"Loading dev set from {json_file_path}...")
     with open(json_file_path, 'r', encoding='utf-8') as f:
         dev_data = json.load(f)
@@ -745,13 +719,13 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
     with open(predictions_json, 'r', encoding='utf-8') as f:
         data_predictions = json.load(f)
     
-    # Extract dev information
+    # Extract dev information — keep IDs as hash strings
     dev_ids = []
     dev_texts = []
     dev_predictions = []
     
     for sample_idx, data in dev_data.items():
-        dev_ids.append(int(sample_idx))
+        dev_ids.append(sample_idx)  # keep as hash string
         dev_texts.append(data['sample'])
     for sample_idx, data in data_predictions.items():
         dev_predictions.append(data['prediction'])
@@ -778,10 +752,6 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
     print("Computing cosine similarity between test and dev sets...")
     test_dev_similarity = cosine_similarity(test_tfidf, dev_tfidf)
     
-    # Create groups
-    print("Creating groups for each test instance...")
-    result_dict = {}
-    
     # Load existing results if file exists
     if os.path.exists(output_json_path):
         with open(output_json_path, 'r', encoding='utf-8') as f:
@@ -790,12 +760,13 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
     else:
         result_dict = {}
     
+    print("Creating groups for each test instance...")
     for test_idx in tqdm(range(len(test_texts)), desc="Processing test instances"):
-        # Skip if already processed
-        if str(test_ids[test_idx]) in result_dict:
+
+        # Skip if already processed — IDs are hash strings, no conversion needed
+        if test_ids[test_idx] in result_dict:
             continue
             
-        # Get similarities to all dev instances
         similarities = test_dev_similarity[test_idx]
         
         # Find top 2 most similar positive dev instances
@@ -814,18 +785,18 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
         dev_group_indices = top_2_positive + top_2_negative
         random.shuffle(dev_group_indices)
         
-        # Map to actual dev IDs and predictions
+        # Map to actual dev hash IDs and predictions
         dev_group_ids = [dev_ids[i] for i in dev_group_indices]
         dev_group_predictions = [dev_predictions[i] for i in dev_group_indices]
         
-        # Store in result dictionary
+        # Store result keyed by test hash ID
         result_dict[test_ids[test_idx]] = {
             "test_instance": test_texts[test_idx],
             "dev_group": dev_group_ids,
             "dev_predictions": dev_group_predictions
         }
         
-        # Save to JSON after each instance
+        # Save after each instance for resumability
         with open(output_json_path, 'w', encoding='utf-8') as f:
             json.dump(result_dict, f, indent=4, ensure_ascii=False)
     

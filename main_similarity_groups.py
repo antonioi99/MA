@@ -10,10 +10,9 @@ def main():
     merged_data = os.path.join(folder_merged, 'merged_data.json')
 
 
-    # Load test set from IMDB
-    print("Loading test set from IMDB...")
-    dataset_test = load_dataset("imdb", split="test")
-    dataset_test = dataset_test.select(range(7500, 17500))
+    # Load test set
+    print("Loading test set...")
+    dataset_test = load_dataset("antonio4210/imdb-dev-test-split", split="test")
 
 
     test_texts = dataset_test['text']
