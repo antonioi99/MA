@@ -14,11 +14,8 @@ def main():
     print("Loading test set...")
     dataset_test = load_dataset("antonio4210/imdb-dev-test-split", split="test")
 
-
-    test_texts = dataset_test['text']
-
-    test_texts = list(test_texts)
-    test_ids = list(range(len(test_texts))) 
+    test_texts = list(dataset_test['text'])
+    test_ids = dataset_test['id']
 
     folder_similarity_groups = 'similarity_groups'
     os.makedirs(folder_similarity_groups, exist_ok=True)

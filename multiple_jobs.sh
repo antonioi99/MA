@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name="ma_innocenti"
-#SBATCH --array=0-161
+#SBATCH --array=0-161%6
 #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
 #SBATCH --container-mount-home 
 #SBATCH --mem=64GB
@@ -12,7 +12,6 @@
 #SBATCH --container-workdir=/srv/home/users/a12225670cs/MA
 #SBATCH --nodes=1
 #SBATCH --container-writable
-#SBATCH --partition=p_low
 #SBATCH --requeue
 
 
