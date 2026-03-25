@@ -498,7 +498,7 @@ def main():
     print("\n[1/3] Loading SHAP data...")
     shap_data = load_pkl_files(
         f'explanations/pkl/shap/{data_set}_set/shap_raw',
-        'shap_values_*.pkl',
+        'shap_*.pkl',
         max_files=max_files
     )
     shap_scores = extract_scores_from_explanations(shap_data, 'shap')
@@ -510,7 +510,7 @@ def main():
     print("\n[2/3] Loading LIME data...")
     lime_data = load_pkl_files(
         f'explanations/pkl/lime/{data_set}_set/lime_raw',
-        'lime_explanation_*.pkl',
+        'lime_*.pkl',
         max_files=max_files
     )
     lime_scores = extract_scores_from_explanations(lime_data, 'lime')
@@ -522,7 +522,7 @@ def main():
     print("\n[3/3] Loading Attention data...")
     attention_data = load_pkl_files(
         f'explanations/pkl/attention/{data_set}_set/attention_raw',
-        'attention_explanation_*.pkl',
+        'attention_*.pkl',
         max_files=max_files
     )
 

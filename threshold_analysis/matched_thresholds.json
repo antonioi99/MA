@@ -1,0 +1,18 @@
+{
+  "shap": {
+    "threshold": 0.01,
+    "percentile": 92.89275556888174,
+    "percentage_highlighted": 7.107244431118261
+  },
+  "lime": {
+    "threshold": 0.015441694662538535,
+    "percentile": 92.89275556888174,
+    "percentage_highlighted": 7.107248417640292
+  },
+  "attention": {
+    "threshold": 0.004364013671875,
+    "percentile": 92.89275556888174,
+    "percentage_highlighted": 7.108804782975994
+  },
+  "target_percentage_highlighted": 7.107244431118261
+}

@@ -28,5 +28,5 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_similarity_groups.py
-
+python main_score_distribution_analysis.py
+# python main_test.py
