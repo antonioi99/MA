@@ -1,15 +1,13 @@
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 from tqdm import tqdm
 import json
-import sys
 import os
 
-# Import your existing helper functions
 import helper_functions
+
 
 def load_pkl_files(directory, pattern, max_files=None):
     """Load all pkl files matching pattern from directory."""
@@ -26,6 +24,7 @@ def load_pkl_files(directory, pattern, max_files=None):
     
     return data
 
+
 def extract_scores_from_explanations(explanation_data, explanation_type, score_type='mean'):
     """
     Extract scores using the ExplanationFormatter class.
@@ -39,16 +38,14 @@ def extract_scores_from_explanations(explanation_data, explanation_type, score_t
         numpy array of all scores
     """
     formatter = helper_functions.ExplanationFormatter()
-    
-    # Load explanations into formatter
     formatter.load_explanations(explanation_data, explanation_type)
     
-    # Extract all scores from processed_data
     all_scores = []
     for words, scores in formatter.processed_data:
         all_scores.extend(scores)
     
     return np.array(all_scores)
+
 
 def analyze_score_distribution(scores, name):
     """Compute statistics for score distribution."""
@@ -67,29 +64,21 @@ def analyze_score_distribution(scores, name):
         'q99': np.percentile(scores, 99),
     }
     
-    # Additional stats for signed scores (SHAP/LIME)
     if np.any(scores < 0):
         positive_scores = scores[scores > 0]
         negative_scores = scores[scores < 0]
         abs_scores = np.abs(scores)
         
         stats.update({
-            # Count stats
             'positive_count': len(positive_scores),
             'negative_count': len(negative_scores),
-            
-            # Mean stats
             'positive_mean': np.mean(positive_scores) if len(positive_scores) > 0 else 0,
             'negative_mean': np.mean(negative_scores) if len(negative_scores) > 0 else 0,
-            
-            # Absolute value stats
             'abs_mean': np.mean(abs_scores),
             'abs_std': np.std(abs_scores),
             'abs_min': np.min(abs_scores),
             'abs_max': np.max(abs_scores),
             'abs_median': np.median(abs_scores),
-            
-            # Absolute value percentiles
             'abs_q25': np.percentile(abs_scores, 25),
             'abs_q75': np.percentile(abs_scores, 75),
             'abs_q90': np.percentile(abs_scores, 90),
@@ -99,6 +88,7 @@ def analyze_score_distribution(scores, name):
     
     return stats
 
+
 def print_statistics(stats):
     """Print statistics in a readable format."""
     print(f"\n{'='*80}")
@@ -106,9 +96,6 @@ def print_statistics(stats):
     print(f"{'='*80}")
     print(f"Total scores: {stats['count']:,}")
     
-    # ========================================================================
-    # RAW SCORES (signed for SHAP/LIME, positive for Attention)
-    # ========================================================================
     print(f"\n{'─'*80}")
     print(f"RAW SCORE STATISTICS:")
     print(f"{'─'*80}")
@@ -126,9 +113,6 @@ def print_statistics(stats):
     print(f"    95th: {stats['q95']:>10.6f}")
     print(f"    99th: {stats['q99']:>10.6f}")
     
-    # ========================================================================
-    # SIGNED SCORE BREAKDOWN (SHAP/LIME only)
-    # ========================================================================
     if 'positive_count' in stats:
         print(f"\n{'─'*80}")
         print(f"SIGNED SCORE BREAKDOWN:")
@@ -139,9 +123,6 @@ def print_statistics(stats):
         print(f"  Negative scores: {stats['negative_count']:>10,} ({stats['negative_count']/stats['count']*100:>5.1f}%)")
         print(f"    └─ Mean:       {stats['negative_mean']:>10.6f}")
         
-        # ====================================================================
-        # ABSOLUTE VALUE STATISTICS (PRIMARY for thresholding!)
-        # ====================================================================
         print(f"\n{'─'*80}")
         print(f"ABSOLUTE VALUE STATISTICS (for thresholding):")
         print(f"{'─'*80}")
@@ -169,10 +150,8 @@ def print_comparison_table(shap_stats, lime_stats, attention_stats):
     print(f"{'Metric':<20} {'SHAP':>15} {'LIME':>15} {'Attention':>15}")
     print("─" * 80)
     
-    # For SHAP and LIME, use absolute stats; for Attention, use regular stats
     shap_abs = 'abs_' if 'abs_mean' in shap_stats else ''
     lime_abs = 'abs_' if 'abs_mean' in lime_stats else ''
-    attn_abs = ''  # Attention doesn't need abs_ prefix
     
     print(f"{'Mean':<20} {shap_stats.get(f'{shap_abs}mean', shap_stats['mean']):>15.6f} "
           f"{lime_stats.get(f'{lime_abs}mean', lime_stats['mean']):>15.6f} "
@@ -199,13 +178,12 @@ def print_comparison_table(shap_stats, lime_stats, attention_stats):
     print("─" * 80)
     
     for percentile, key in [('25th', 'q25'), ('50th', 'median'), ('75th', 'q75'), 
-                           ('90th', 'q90'), ('95th', 'q95'), ('99th', 'q99')]:
+                             ('90th', 'q90'), ('95th', 'q95'), ('99th', 'q99')]:
         abs_key = f'{shap_abs}{key}' if shap_abs else key
         print(f"  {percentile:<18} {shap_stats.get(abs_key, shap_stats[key]):>15.6f} "
               f"{lime_stats.get(f'{lime_abs}{key}', lime_stats[key]):>15.6f} "
               f"{attention_stats[key]:>15.6f}")
-    
-    print()
+
 
 def suggest_thresholds(stats):
     """Suggest threshold values based on statistics."""
@@ -214,7 +192,6 @@ def suggest_thresholds(stats):
     print(f"{'='*80}")
     
     if 'abs_median' in stats:
-        # For SHAP/LIME (signed scores)
         print("\nOption 1: Conservative (keep ~75% of scores)")
         print(f"  Threshold: {stats['abs_q25']:.6f}")
         
@@ -227,7 +204,6 @@ def suggest_thresholds(stats):
         print("\nOption 4: Very Strict (keep ~5% of scores)")
         print(f"  Threshold: {stats['abs_q95']:.6f}")
     else:
-        # For Attention (positive scores only)
         print("\nOption 1: Conservative (keep ~75% of scores)")
         print(f"  Threshold: {stats['q25']:.6f}")
         
@@ -240,220 +216,32 @@ def suggest_thresholds(stats):
         print("\nOption 4: Very Strict (keep ~5% of scores)")
         print(f"  Threshold: {stats['q95']:.6f}")
 
-def plot_distributions(shap_scores, lime_scores, attention_scores, output_file='threshold_analysis/score_distributions.png'):
-    """Create comprehensive distribution plots."""
-    fig, axes = plt.subplots(3, 3, figsize=(20, 16))
-    
-    # ========================================================================
-    # SHAP PLOTS
-    # ========================================================================
-    
-    # SHAP: Regular histogram
-    axes[0, 0].hist(shap_scores, bins=100, alpha=0.7, color='blue', edgecolor='black')
-    axes[0, 0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero')
-    axes[0, 0].set_xlabel('Score', fontsize=12)
-    axes[0, 0].set_ylabel('Frequency', fontsize=12)
-    axes[0, 0].set_title('SHAP Score Distribution', fontsize=14, fontweight='bold')
-    axes[0, 0].legend()
-    axes[0, 0].grid(alpha=0.3)
-    
-    # SHAP: Box plot
-    axes[0, 1].boxplot([shap_scores], vert=True, patch_artist=True,
-                       boxprops=dict(facecolor='lightblue'))
-    axes[0, 1].set_ylabel('Score', fontsize=12)
-    axes[0, 1].set_title('SHAP Box Plot', fontsize=14, fontweight='bold')
-    axes[0, 1].grid(alpha=0.3)
-    
-    # SHAP: Absolute values with LOG SCALE (NEW!)
-    axes[0, 2].hist(np.abs(shap_scores), bins=100, alpha=0.7, color='blue', edgecolor='black')
-    axes[0, 2].set_yscale('log')
-    axes[0, 2].axvline(np.median(np.abs(shap_scores)), color='red', linestyle='--', 
-                      linewidth=2, label=f'Median: {np.median(np.abs(shap_scores)):.4f}')
-    axes[0, 2].set_xlabel('Absolute Score', fontsize=12)
-    axes[0, 2].set_ylabel('Frequency (log scale)', fontsize=12)
-    axes[0, 2].set_title('SHAP Absolute Value Distribution (Log Scale)', fontsize=14, fontweight='bold')
-    axes[0, 2].legend()
-    axes[0, 2].grid(alpha=0.3)
-    
-    # ========================================================================
-    # LIME PLOTS
-    # ========================================================================
-    
-    # LIME: Regular histogram
-    axes[1, 0].hist(lime_scores, bins=100, alpha=0.7, color='green', edgecolor='black')
-    axes[1, 0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero')
-    axes[1, 0].set_xlabel('Score', fontsize=12)
-    axes[1, 0].set_ylabel('Frequency', fontsize=12)
-    axes[1, 0].set_title('LIME Score Distribution', fontsize=14, fontweight='bold')
-    axes[1, 0].legend()
-    axes[1, 0].grid(alpha=0.3)
-    
-    # LIME: Box plot
-    axes[1, 1].boxplot([lime_scores], vert=True, patch_artist=True,
-                       boxprops=dict(facecolor='lightgreen'))
-    axes[1, 1].set_ylabel('Score', fontsize=12)
-    axes[1, 1].set_title('LIME Box Plot', fontsize=14, fontweight='bold')
-    axes[1, 1].grid(alpha=0.3)
-    
-    # LIME: Absolute values with LOG SCALE (NEW!)
-    axes[1, 2].hist(np.abs(lime_scores), bins=100, alpha=0.7, color='green', edgecolor='black')
-    axes[1, 2].set_yscale('log')
-    axes[1, 2].axvline(np.median(np.abs(lime_scores)), color='red', linestyle='--',
-                      linewidth=2, label=f'Median: {np.median(np.abs(lime_scores)):.4f}')
-    axes[1, 2].set_xlabel('Absolute Score', fontsize=12)
-    axes[1, 2].set_ylabel('Frequency (log scale)', fontsize=12)
-    axes[1, 2].set_title('LIME Absolute Value Distribution (Log Scale)', fontsize=14, fontweight='bold')
-    axes[1, 2].legend()
-    axes[1, 2].grid(alpha=0.3)
-    
-    # ========================================================================
-    # ATTENTION PLOTS
-    # ========================================================================
-    
-    # Attention: Regular histogram
-    axes[2, 0].hist(attention_scores, bins=100, alpha=0.7, color='orange', edgecolor='black')
-    axes[2, 0].axvline(np.median(attention_scores), color='red', linestyle='--',
-                      linewidth=2, label=f'Median: {np.median(attention_scores):.4f}')
-    axes[2, 0].set_xlabel('Score', fontsize=12)
-    axes[2, 0].set_ylabel('Frequency', fontsize=12)
-    axes[2, 0].set_title('Attention Score Distribution', fontsize=14, fontweight='bold')
-    axes[2, 0].legend()
-    axes[2, 0].grid(alpha=0.3)
-    
-    # Attention: Box plot
-    axes[2, 1].boxplot([attention_scores], vert=True, patch_artist=True,
-                       boxprops=dict(facecolor='lightyellow'))
-    axes[2, 1].set_ylabel('Score', fontsize=12)
-    axes[2, 1].set_title('Attention Box Plot', fontsize=14, fontweight='bold')
-    axes[2, 1].grid(alpha=0.3)
-    
-    # Attention: Log scale histogram (ALREADY HAD THIS)
-    axes[2, 2].hist(attention_scores, bins=100, alpha=0.7, color='orange', edgecolor='black')
-    axes[2, 2].set_yscale('log')
-    axes[2, 2].axvline(np.median(attention_scores), color='red', linestyle='--',
-                      linewidth=2, label=f'Median: {np.median(attention_scores):.4f}')
-    axes[2, 2].set_xlabel('Score', fontsize=12)
-    axes[2, 2].set_ylabel('Frequency (log scale)', fontsize=12)
-    axes[2, 2].set_title('Attention Distribution (Log Scale)', fontsize=14, fontweight='bold')
-    axes[2, 2].legend()
-    axes[2, 2].grid(alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"\nSaved distribution plots to: {output_file}")
-    plt.close()
-
-
-def plot_comparison(shap_scores, lime_scores, attention_scores, output_file='threshold_analysis/score_comparison.png'):
-    """Create side-by-side comparison plots."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    
-    data_to_plot = [
-        np.abs(shap_scores),
-        np.abs(lime_scores),
-        attention_scores
-    ]
-    labels = ['SHAP\n(absolute)', 'LIME\n(absolute)', 'Attention']
-    colors = ['blue', 'green', 'orange']
-    
-    # Box plots comparison
-    bp = axes[0].boxplot(data_to_plot, labels=labels, patch_artist=True)
-    for patch, color in zip(bp['boxes'], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-    axes[0].set_ylabel('Score', fontsize=12)
-    axes[0].set_title('Score Distribution Comparison', fontsize=14, fontweight='bold')
-    axes[0].grid(alpha=0.3, axis='y')
-    
-    # Violin plots
-    parts = axes[1].violinplot(data_to_plot, positions=[1, 2, 3], showmeans=True, showmedians=True)
-    for i, pc in enumerate(parts['bodies']):
-        pc.set_facecolor(colors[i])
-        pc.set_alpha(0.6)
-    axes[1].set_xticks([1, 2, 3])
-    axes[1].set_xticklabels(labels)
-    axes[1].set_ylabel('Score', fontsize=12)
-    axes[1].set_title('Score Density Comparison', fontsize=14, fontweight='bold')
-    axes[1].grid(alpha=0.3, axis='y')
-    
-    # Overlaid histograms (normalized)
-    axes[2].hist(np.abs(shap_scores), bins=50, alpha=0.5, color='blue', 
-                label='SHAP', density=True, edgecolor='black')
-    axes[2].hist(np.abs(lime_scores), bins=50, alpha=0.5, color='green',
-                label='LIME', density=True, edgecolor='black')
-    axes[2].hist(attention_scores, bins=50, alpha=0.5, color='orange',
-                label='Attention', density=True, edgecolor='black')
-    axes[2].set_xlabel('Score', fontsize=12)
-    axes[2].set_ylabel('Density', fontsize=12)
-    axes[2].set_title('Normalized Distribution Overlay', fontsize=14, fontweight='bold')
-    axes[2].legend()
-    axes[2].grid(alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"Saved comparison plots to: {output_file}")
-    plt.close()
 
 def calculate_exact_percentile(scores, threshold, use_abs=True):
-    """
-    Calculate the exact percentile for a given threshold.
-    
-    Args:
-        scores: numpy array of scores
-        threshold: the threshold value
-        use_abs: whether to use absolute values (for SHAP/LIME)
-    
-    Returns:
-        percentile: the exact percentile (0-100)
-    """
+    """Calculate the exact percentile for a given threshold."""
     if use_abs:
         scores = np.abs(scores)
-    
-    # Calculate what percentage of scores are below the threshold
     percentage_below = (scores < threshold).sum() / len(scores) * 100
-    
     return percentage_below
 
+
 def find_threshold_for_percentile(scores, percentile, use_abs=True):
-    """
-    Find the threshold value that corresponds to a given percentile.
-    
-    Args:
-        scores: numpy array of scores
-        percentile: target percentile (0-100)
-        use_abs: whether to use absolute values (for SHAP/LIME)
-    
-    Returns:
-        threshold: the threshold value at that percentile
-    """
+    """Find the threshold value that corresponds to a given percentile."""
     if use_abs:
         scores = np.abs(scores)
-    
     return np.percentile(scores, percentile)
 
-def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores, 
+
+def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores,
                                     shap_threshold=0.01):
-    """
-    Calculate matching thresholds for LIME and Attention based on SHAP threshold.
-    
-    Args:
-        shap_scores, lime_scores, attention_scores: numpy arrays of scores
-        shap_threshold: your chosen SHAP threshold
-    
-    Returns:
-        dict with thresholds and statistics
-    """
-    # Calculate exact percentile for SHAP threshold
+    """Calculate matching thresholds for LIME and Attention based on SHAP threshold."""
     shap_percentile = calculate_exact_percentile(shap_scores, shap_threshold, use_abs=True)
     
-    # Find matching thresholds for LIME and Attention
     lime_threshold = find_threshold_for_percentile(lime_scores, shap_percentile, use_abs=True)
     attention_threshold = find_threshold_for_percentile(attention_scores, shap_percentile, use_abs=False)
     
-    # Calculate percentage of words that will be highlighted
     percentage_highlighted = 100 - shap_percentile
     
-    # Verify the thresholds
     shap_verify = 100 - calculate_exact_percentile(shap_scores, shap_threshold, use_abs=True)
     lime_verify = 100 - calculate_exact_percentile(lime_scores, lime_threshold, use_abs=True)
     attention_verify = 100 - calculate_exact_percentile(attention_scores, attention_threshold, use_abs=False)
@@ -466,12 +254,12 @@ def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores,
         },
         'lime': {
             'threshold': lime_threshold,
-            'percentile': shap_percentile,  # Same target percentile
+            'percentile': shap_percentile,
             'percentage_highlighted': lime_verify
         },
         'attention': {
             'threshold': attention_threshold,
-            'percentile': shap_percentile,  # Same target percentile
+            'percentile': shap_percentile,
             'percentage_highlighted': attention_verify
         },
         'target_percentage_highlighted': percentage_highlighted
@@ -479,16 +267,68 @@ def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores,
     
     return results
 
+
+def plot_distributions(shap_scores, lime_scores, attention_scores,
+                               shap_threshold,
+                               lime_threshold,
+                               attention_threshold,
+                               output_file='threshold_analysis/score_distributions_thesis.png'):
+    """
+    Clean 3x2 figure for thesis:
+    - Left column: full signed distribution
+    - Right column: zoomed absolute value distribution with threshold
+    """
+    fig, axes = plt.subplots(3, 2, figsize=(14, 12))
+    
+    colors = {'shap': 'steelblue', 'lime': 'seagreen', 'attention': 'darkorange'}
+    methods = [
+        ('SHAP', shap_scores, shap_threshold, colors['shap'], True, (-0.05, 0.05)),
+        ('LIME', lime_scores, lime_threshold, colors['lime'], True, (-0.05, 0.05)),
+        ('Attention', attention_scores, attention_threshold, colors['attention'], False, (0, 0.03)),
+    ]
+    
+    for row, (name, scores, threshold, color, use_abs, xlim) in enumerate(methods):
+        
+        # Left: full signed distribution
+        ax_left = axes[row, 0]
+        ax_left.hist(scores, bins=150, alpha=0.75, color=color, edgecolor='none')
+        if use_abs:
+            ax_left.axvline(0, color='black', linestyle='--', linewidth=1, label='Zero')
+        ax_left.set_xlim(xlim)
+        ax_left.set_xlabel('Score', fontsize=11)
+        ax_left.set_ylabel('Frequency', fontsize=11)
+        ax_left.set_title(f'{name} — Score Distribution', fontsize=13, fontweight='bold')
+        ax_left.grid(alpha=0.3)
+        if use_abs:
+            ax_left.legend(fontsize=10)
+        
+        # Right: zoomed absolute value with threshold
+        ax_right = axes[row, 1]
+        abs_scores = np.abs(scores) if use_abs else scores
+        ax_right.hist(abs_scores, bins=150, alpha=0.75, color=color, edgecolor='none')
+        ax_right.set_yscale('log')
+        ax_right.axvline(threshold, color='red', linestyle='--', linewidth=2,
+                         label=f'Threshold = {threshold}')
+        ax_right.set_xlim((0, xlim[1]))
+        ax_right.set_xlabel('Absolute Score' if use_abs else 'Score', fontsize=11)
+        ax_right.set_ylabel('Frequency (log scale)', fontsize=11)
+        ax_right.set_title(f'{name} — Absolute Value Distribution (Log Scale)',
+                           fontsize=13, fontweight='bold')
+        ax_right.legend(fontsize=10)
+        ax_right.grid(alpha=0.3)
+    
+    plt.tight_layout(pad=2.0)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"Saved thesis figure to: {output_file}")
+    plt.close()
+
+
 def main():
 
     os.makedirs('threshold_analysis', exist_ok=True)
 
-
-    """Main analysis function."""
-    
-    # Configuration
-    data_set = 'dev'  # or 'train'
-    max_files = None  # Set to a number to limit files, or None for all
+    data_set = 'dev'
+    max_files = None
     
     print("="*80)
     print("SCORE DISTRIBUTION ANALYSIS")
@@ -525,46 +365,27 @@ def main():
         'attention_*.pkl',
         max_files=max_files
     )
-
-    # Load and analyze all three methods
-    shap_stats = analyze_score_distribution(shap_scores, 'SHAP')
-    print_statistics(shap_stats)
-    suggest_thresholds(shap_stats)
-    
-    lime_stats = analyze_score_distribution(lime_scores, 'LIME')
-    print_statistics(lime_stats)
-    suggest_thresholds(lime_stats)
-
-    attention_scores = extract_scores_from_explanations(attention_data, 'attention', score_type='mean')    
+    attention_scores = extract_scores_from_explanations(attention_data, 'attention', score_type='mean')
     attention_stats = analyze_score_distribution(attention_scores, 'Attention (mean)')
     print_statistics(attention_stats)
     suggest_thresholds(attention_stats)
     
-    # ============================================================================
-    # COMPARISON TABLE
-    # ============================================================================
+    # Comparison table
     print_comparison_table(shap_stats, lime_stats, attention_stats)
-
     
-    # ============================================================================
-    # CALCULATE MATCHED THRESHOLDS
-    # ============================================================================
+    # Calculate matched thresholds
     print("\n" + "="*80)
     print("CALCULATING MATCHED THRESHOLDS")
     print("="*80)
     
-    # Your desired SHAP threshold
     desired_shap_threshold = 0.01
-    
-    # Calculate matching thresholds
     matched_thresholds = match_thresholds_across_methods(
-        shap_scores, 
-        lime_scores, 
+        shap_scores,
+        lime_scores,
         attention_scores,
         shap_threshold=desired_shap_threshold
     )
     
-    # Print results
     print(f"\nDesired SHAP threshold: {desired_shap_threshold}")
     print(f"This corresponds to the {matched_thresholds['shap']['percentile']:.2f}th percentile")
     print(f"Which highlights {matched_thresholds['target_percentage_highlighted']:.2f}% of words\n")
@@ -579,7 +400,6 @@ def main():
     print()
     print(f"Attention: {matched_thresholds['attention']['threshold']:.6f}")
     print(f"           → Highlights {matched_thresholds['attention']['percentage_highlighted']:.2f}% of words")
-    print()
     
     print("\nCOPY-PASTE READY CODE:")
     print("-" * 80)
@@ -587,25 +407,30 @@ def main():
     print(f"threshold_lime={matched_thresholds['lime']['threshold']:.6f},")
     print(f"threshold_attention={matched_thresholds['attention']['threshold']:.6f},")
     
-    # Save matched thresholds to JSON
+    # Save matched thresholds
     with open('threshold_analysis/matched_thresholds.json', 'w') as f:
         json.dump(matched_thresholds, f, indent=2)
     print("\nSaved matched thresholds to: matched_thresholds.json")
     
-    # Create visualizations
+    # Create thesis figure
     print("\n" + "="*80)
     print("CREATING VISUALIZATIONS")
     print("="*80)
-    plot_distributions(shap_scores, lime_scores, attention_scores)
-    plot_comparison(shap_scores, lime_scores, attention_scores)
+    plot_distributions(
+        shap_scores,
+        lime_scores,
+        attention_scores,
+        shap_threshold=round(matched_thresholds['shap']['threshold'], 3),
+        lime_threshold=round(matched_thresholds['lime']['threshold'], 3),
+        attention_threshold=round(matched_thresholds['attention']['threshold'], 3)
+    )
     
-    # Save statistics to JSON
+    # Save statistics
     stats_summary = {
         'shap': shap_stats,
         'lime': lime_stats,
         'attention': attention_stats
     }
-    
     with open('threshold_analysis/score_statistics.json', 'w') as f:
         json.dump(stats_summary, f, indent=2)
     print("\nSaved statistics to: score_statistics.json")
@@ -614,10 +439,10 @@ def main():
     print("ANALYSIS COMPLETE")
     print("="*80)
     print("\nFiles generated:")
-    print("  - score_distributions.png (detailed distributions)")
-    print("  - score_comparison.png (side-by-side comparison)")
-    print("  - score_statistics.json (numerical statistics)")
-    print("  - matched_thresholds.json (matched thresholds)")
+    print("  - score_distributions_thesis.png")
+    print("  - score_statistics.json")
+    print("  - matched_thresholds.json")
+
 
 if __name__ == '__main__':
-    main() 
+    main()
