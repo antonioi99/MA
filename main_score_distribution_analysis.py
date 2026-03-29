@@ -18,9 +18,17 @@ def load_pkl_files(directory, pattern, max_files=None):
         files = files[:max_files]
     
     data = []
-    for file in tqdm(files, desc=f"Loading from {pkl_dir.name}"):
-        with open(file, 'rb') as f:
-            data.append(pickle.load(f))
+    total = len(files)
+    update_interval = max(1, total // 10)
+
+    with tqdm(total=total, desc=f"Loading from {pkl_dir.name}",
+              bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]") as pbar:
+        for i, file in enumerate(files):
+            with open(file, 'rb') as f:
+                data.append(pickle.load(f))
+            
+            if (i + 1) % update_interval == 0 or (i + 1) == total:
+                pbar.update(update_interval if (i + 1) % update_interval == 0 else total % update_interval)
     
     return data
 
@@ -274,49 +282,54 @@ def plot_distributions(shap_scores, lime_scores, attention_scores,
                                attention_threshold,
                                output_file='threshold_analysis/score_distributions_thesis.png'):
     """
-    Clean 3x2 figure for thesis:
-    - Left column: full signed distribution
-    - Right column: zoomed absolute value distribution with threshold
+    Clean 2x3 figure for thesis:
+    - Top row: full signed distribution (shared y-axis)
+    - Bottom row: zoomed absolute value distribution with threshold (log scale)
     """
-    fig, axes = plt.subplots(3, 2, figsize=(14, 12))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     
     colors = {'shap': 'steelblue', 'lime': 'seagreen', 'attention': 'darkorange'}
     methods = [
-        ('SHAP', shap_scores, shap_threshold, colors['shap'], True, (-0.05, 0.05)),
-        ('LIME', lime_scores, lime_threshold, colors['lime'], True, (-0.05, 0.05)),
-        ('Attention', attention_scores, attention_threshold, colors['attention'], False, (0, 0.03)),
+        ('SHAP',      shap_scores,      shap_threshold,      colors['shap'],      True,  (-0.04, 0.04), (0, 0.7)),
+        ('LIME',      lime_scores,      lime_threshold,      colors['lime'],      True,  (-0.04, 0.04), (0, 0.7)),
+        ('Attention', attention_scores, attention_threshold, colors['attention'], False, (0,     0.02),  (0, 0.2)),
     ]
-    
-    for row, (name, scores, threshold, color, use_abs, xlim) in enumerate(methods):
-        
-        # Left: full signed distribution
-        ax_left = axes[row, 0]
-        ax_left.hist(scores, bins=150, alpha=0.75, color=color, edgecolor='none')
+
+    # --- Top row: linear distributions ---
+    top_axes = []
+    for col, (name, scores, threshold, color, use_abs, xlim_linear, _) in enumerate(methods):
+        ax = axes[0, col]
+        ax.hist(scores, bins=150, alpha=0.75, color=color, edgecolor='none')
         if use_abs:
-            ax_left.axvline(0, color='black', linestyle='--', linewidth=1, label='Zero')
-        ax_left.set_xlim(xlim)
-        ax_left.set_xlabel('Score', fontsize=11)
-        ax_left.set_ylabel('Frequency', fontsize=11)
-        ax_left.set_title(f'{name} — Score Distribution', fontsize=13, fontweight='bold')
-        ax_left.grid(alpha=0.3)
-        if use_abs:
-            ax_left.legend(fontsize=10)
-        
-        # Right: zoomed absolute value with threshold
-        ax_right = axes[row, 1]
+            ax.axvline(0, color='black', linestyle='--', linewidth=1, label='Zero')
+            ax.legend(fontsize=10)
+        ax.set_xlim(xlim_linear)
+        ax.set_xlabel('Score', fontsize=11)
+        ax.set_ylabel('Frequency', fontsize=11)
+        ax.set_title(f'{name} — Score Distribution', fontsize=13, fontweight='bold')
+        ax.grid(alpha=0.3)
+        top_axes.append(ax)
+
+    # Shared y-axis scale for top row
+    top_y_max = max(ax.get_ylim()[1] for ax in top_axes)
+    for ax in top_axes:
+        ax.set_ylim(0, top_y_max)
+
+    # --- Bottom row: log-scale absolute distributions ---
+    for col, (name, scores, threshold, color, use_abs, _, xlim_log) in enumerate(methods):
+        ax = axes[1, col]
         abs_scores = np.abs(scores) if use_abs else scores
-        ax_right.hist(abs_scores, bins=150, alpha=0.75, color=color, edgecolor='none')
-        ax_right.set_yscale('log')
-        ax_right.axvline(threshold, color='red', linestyle='--', linewidth=2,
-                         label=f'Threshold = {threshold}')
-        ax_right.set_xlim((0, xlim[1]))
-        ax_right.set_xlabel('Absolute Score' if use_abs else 'Score', fontsize=11)
-        ax_right.set_ylabel('Frequency (log scale)', fontsize=11)
-        ax_right.set_title(f'{name} — Absolute Value Distribution (Log Scale)',
-                           fontsize=13, fontweight='bold')
-        ax_right.legend(fontsize=10)
-        ax_right.grid(alpha=0.3)
-    
+        ax.hist(abs_scores, bins=150, alpha=0.75, color=color, edgecolor='none')
+        ax.set_yscale('log')
+        ax.axvline(threshold, color='red', linestyle='--', linewidth=2,
+                   label=f'Threshold = {threshold}')
+        ax.set_xlim(xlim_log)
+        ax.set_xlabel('Absolute Score' if use_abs else 'Score', fontsize=11)
+        ax.set_ylabel('Frequency (log scale)', fontsize=11)
+        ax.set_title(f'{name} — Absolute Value Distribution (Log Scale)', fontsize=13, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(alpha=0.3)
+
     plt.tight_layout(pad=2.0)
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Saved thesis figure to: {output_file}")
