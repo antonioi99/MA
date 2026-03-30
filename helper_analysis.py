@@ -536,6 +536,7 @@ class McNemarAnalyzer:
         latex_lines = []
         latex_lines.append(r'\begin{table}[htbp]')
         latex_lines.append(r'\centering')
+        latex_lines.append(r'\small')
         latex_lines.append(f'\\caption{{{caption}}}')
         latex_lines.append(f'\\label{{{config.to_label()}}}')
         latex_lines.append(r'\begin{tabular}{lrrrr}')  # Only 5 columns now
