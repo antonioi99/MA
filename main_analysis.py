@@ -1,6 +1,6 @@
 from itertools import product
 import os
-from helper_analysis import McNemarAnalyzer, quick_analyze
+from helper_analysis import McNemarAnalyzer, quick_analyze, AggregatedAnalyzer
 
 def main():
 
@@ -32,9 +32,16 @@ def main():
 
 
     analyzer = McNemarAnalyzer(base_path="analysis")
-    analyzer.analyze_and_save_all()
-    analyzer.latex_tables = []
-    analyzer.analyze_and_save_all_aggregated()
+
+    analyzer.analyze_and_save_all(output_dir="tables/per_model")
+    analyzer.analyze_and_save_all_aggregated(output_dir="tables/per_model_aggregated")
+    analyzer.analyze_and_save_all_conservative(output_dir="tables/per_model_conservative")
+
+    aggregated_analyzer = AggregatedAnalyzer(analyzer)
+
+    aggregated_analyzer.analyze_and_save_all(output_dir="tables/cross_model")
+    aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/cross_model_conservative")
+
 
 if __name__ == '__main__':
     main()
