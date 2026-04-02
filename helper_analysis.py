@@ -589,7 +589,7 @@ class McNemarAnalyzer:
         latex_str = self.to_latex(df, config)
         
         if output_file is None:
-            output_file = f"results_{config}.tex"
+            output_file = f"{config}.tex"
         
         with open(output_file, 'w', encoding='UTF-8') as f:
             f.write(latex_str)
@@ -617,7 +617,7 @@ class McNemarAnalyzer:
         
         print(f"Saved {len(self.latex_tables)} LaTeX tables to: {output_file}")
     
-    def analyze_and_save_all(self, output_dir: str = "latex_results"):
+    def analyze_and_save_all(self, output_dir: str = "tables"):
         """
         Analyze all configurations and save both individual and combined LaTeX files
         
@@ -846,7 +846,7 @@ class McNemarAnalyzer:
         
         return df
 
-    def analyze_and_save_all_aggregated(self, output_dir: str = "latex_results"):
+    def analyze_and_save_all_aggregated(self, output_dir: str = "tables"):
         """
         Analyze all configurations with aggregated prompting strategies and save LaTeX files
         
@@ -874,7 +874,7 @@ class McNemarAnalyzer:
                             avg_config = ExperimentConfig(llm, task_type, cot, 'aggregated', exp)
                             
                             # Save individual LaTeX file
-                            individual_file = os.path.join(output_dir, f"results_{avg_config}.tex")
+                            individual_file = os.path.join(output_dir, f"{avg_config}.tex")
                             self.save_latex_table(results_df, avg_config, individual_file)
                             
                             successful_analyses += 1
