@@ -515,19 +515,26 @@ class McNemarAnalyzer:
         Only shows: Format name, Baseline accuracy, Test accuracy, Change, p-value
         """
         # Format the values manually
-        def format_value(val, is_change=False, is_pvalue=False):
+        def format_value(val, is_change=False, is_pvalue=False, is_significant=False, is_positive=False):
             if pd.isna(val):
                 return '--'
             if is_pvalue:
-                return f'{val:.4f}'
+                formatted = f'{val:.4f}'
+                if is_significant and is_positive:  # added is_positive check here
+                    formatted = f'\\textbf{{{formatted}}}'
+                return formatted
             elif is_change:
-                return f'{val*100:.2f}' 
-            else:  # accuracy as decimal
+                sign = '+' if val > 0 else ''
+                formatted = f'{sign}{val*100:.2f}'
+                if is_significant and is_positive:
+                    formatted = f'\\textbf{{{formatted}}}'
+                return formatted
+            else:
                 return f'{val*100:.2f}'
         
         # Generate caption
-        caption = (f"McNemar's Test: {config.llm.upper()} - "
-                f"{config.explanation.title()} - "
+        caption = (f"McNemar's Test: {config.llm.title()} - "
+                f"{config.explanation.upper() if config.explanation in ['lime', 'shap'] else config.explanation.title()} - "
                 f"{'CoT' if 'True' in config.cot else 'No CoT'} - "
                 f"{config.prompting.replace('_', ' ')}")
         
@@ -550,19 +557,18 @@ class McNemarAnalyzer:
         # first_row = df.iloc[0]
         # latex_lines.append(f'Baseline & {format_value(first_row["baseline"])} & -- & -- & -- \\\\')
         
-        # Data rows - only non-baseline
         for idx, row in df.iloc[1:].iterrows():
-            # Find which column has the test accuracy (the non-NaN one that's not baseline/change/p)
-            test_acc = row[idx]  # The column name matches the index name
-            
-            # Format index name nicely
+            test_acc = row[idx]
             format_name = idx.replace("_", " ").title()
+            
+            is_significant = row["p"] < 0.05 if not pd.isna(row["p"]) else False
+            is_positive = row["change"] > 0 if not pd.isna(row["change"]) else False
             
             line = (f'{format_name} & '
                     f'{format_value(row["baseline"])} & '
                     f'{format_value(test_acc)} & '
-                    f'{format_value(row["change"], is_change=True)} & '
-                    f'{format_value(row["p"], is_pvalue=True)} \\\\')
+                    f'{format_value(row["change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
+                    f'{format_value(row["p"], is_pvalue=True, is_significant=is_significant, is_positive=is_positive)} \\\\')
             latex_lines.append(line)
         
         # End table
@@ -880,6 +886,232 @@ class McNemarAnalyzer:
         print(f"Successfully analyzed: {successful_analyses} configurations")
         print(f"Output directory: {output_dir}")
 
+    def compare_formats_conservative(self, llm: str, task_type: str, cot: str,
+                                    baseline_format: str, test_format: str, 
+                                    explanation_type: str) -> Dict:
+        """
+        Compare two formats using McNemar's test, discarding instances where
+        the model's prediction differs between pos_neg and neg_pos label orderings.
+        Only consistent predictions are kept for the analysis.
+
+        Args:
+            llm: LLM name
+            task_type: Task type (single/pairwise)
+            cot: Chain of thought setting
+            baseline_format: Baseline format name
+            test_format: Test format name
+            explanation_type: Explanation method
+
+        Returns:
+            Dictionary with accuracy metrics and test results on consistent instances only
+        """
+        config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg', explanation_type)
+        config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos', explanation_type)
+
+        # Get correctness arrays for both label orderings
+        correct_baseline_pos_neg, correct_test_pos_neg, common_ids_pos_neg = \
+            self.get_correctness_arrays_with_common_ids(config_pos_neg, baseline_format, test_format)
+
+        correct_baseline_neg_pos, correct_test_neg_pos, common_ids_neg_pos = \
+            self.get_correctness_arrays_with_common_ids(config_neg_pos, baseline_format, test_format)
+
+        # Find common test_ids across both orderings
+        common_ids_pos_neg_set = set(common_ids_pos_neg)
+        common_ids_neg_pos_set = set(common_ids_neg_pos)
+        shared_ids = [tid for tid in common_ids_pos_neg if tid in common_ids_neg_pos_set]
+
+        if not shared_ids:
+            raise ValueError(f"No common test_ids between pos_neg and neg_pos for {test_format}")
+
+        # Build index maps for fast lookup
+        pos_neg_idx = {tid: i for i, tid in enumerate(common_ids_pos_neg)}
+        neg_pos_idx = {tid: i for i, tid in enumerate(common_ids_neg_pos)}
+
+        # Filter to consistent instances only
+        consistent_mask = []
+        for tid in shared_ids:
+            baseline_consistent = (correct_baseline_pos_neg[pos_neg_idx[tid]] == 
+                                correct_baseline_neg_pos[neg_pos_idx[tid]])
+            test_consistent = (correct_test_pos_neg[pos_neg_idx[tid]] == 
+                            correct_test_neg_pos[neg_pos_idx[tid]])
+            consistent_mask.append(baseline_consistent and test_consistent)
+
+        consistent_ids = [tid for tid, keep in zip(shared_ids, consistent_mask) if keep]
+        n_discarded = len(shared_ids) - len(consistent_ids)
+
+        if not consistent_ids:
+            raise ValueError(f"No consistent instances remaining for {test_format}")
+
+        # Build correctness arrays for consistent instances only
+        correct_baseline_consistent = np.array([
+            correct_baseline_pos_neg[pos_neg_idx[tid]] for tid in consistent_ids
+        ])
+        correct_test_consistent = np.array([
+            correct_test_pos_neg[pos_neg_idx[tid]] for tid in consistent_ids
+        ])
+
+        # Build contingency table and run McNemar's test
+        contingency_data = pd.DataFrame({
+            'baseline': correct_baseline_consistent,
+            'test': correct_test_consistent
+        })
+        contingency_table = SquareTable.from_data(contingency_data)
+        table = contingency_table.table
+
+        mcnemar_result = mcnemar(table, exact=False, correction=True)
+
+        marginal_row_prob, marginal_col_prob = contingency_table.marginal_probabilities
+        accuracy_baseline = marginal_row_prob[True]
+        accuracy_test = marginal_col_prob[True]
+
+        absolute_change = accuracy_test - accuracy_baseline
+        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
+
+        return {
+            'baseline_format': baseline_format,
+            'test_format': test_format,
+            'llm': llm,
+            'task_type': task_type,
+            'cot': cot,
+            'n_total': len(consistent_ids),
+            'n_discarded': n_discarded,
+            'accuracy_baseline': accuracy_baseline,
+            'accuracy_test': accuracy_test,
+            'absolute_change': absolute_change,
+            'relative_change': relative_change,
+            'both_correct': table[1, 1],
+            'got_worse': table[1, 0],
+            'got_better': table[0, 1],
+            'both_wrong': table[0, 0],
+            'mcnemar_statistic': mcnemar_result.statistic,
+            'p_value': mcnemar_result.pvalue,
+            'significant': mcnemar_result.pvalue < 0.05
+        }
+
+
+    def analyze_configuration_conservative(self, llm: str, task_type: str, 
+                                            cot: str, explanation_type: str) -> pd.DataFrame:
+        """
+        Analyze all explanation formats against baseline using the conservative approach:
+        discarding instances where predictions differ between label orderings.
+
+        Args:
+            llm: LLM name
+            task_type: Task type (single/pairwise)
+            cot: Chain of thought setting
+            explanation_type: Explanation method
+
+        Returns:
+            DataFrame with conservative results
+        """
+        results = []
+
+        for format_name in self.EXPLANATION_FORMATS:
+            if format_name == "baseline":
+                config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg', explanation_type)
+                config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos', explanation_type)
+
+                baseline_data_pos_neg = self.load_results(config_pos_neg, "baseline")
+                baseline_data_neg_pos = self.load_results(config_neg_pos, "baseline")
+
+                avg_baseline_accuracy = (baseline_data_pos_neg['accuracy'] +
+                                        baseline_data_neg_pos['accuracy']) / 2
+
+                row = {
+                    'baseline': avg_baseline_accuracy,
+                    'text_scores': np.nan,
+                    'text_labels': np.nan,
+                    'structured_text_scores': np.nan,
+                    'structured_text_labels': np.nan,
+                    'top_words_scores': np.nan,
+                    'top_words_labels': np.nan,
+                    'natural_words': np.nan,
+                    'part_of_speech': np.nan,
+                    'change': np.nan,
+                    'p': np.nan,
+                    'n_kept': np.nan,
+                    'n_discarded': np.nan
+                }
+            else:
+                comparison = self.compare_formats_conservative(
+                    llm, task_type, cot, "baseline", format_name, explanation_type
+                )
+
+                row = {
+                    'baseline': comparison['accuracy_baseline'],
+                    'text_scores': np.nan,
+                    'text_labels': np.nan,
+                    'structured_text_scores': np.nan,
+                    'structured_text_labels': np.nan,
+                    'top_words_scores': np.nan,
+                    'top_words_labels': np.nan,
+                    'natural_words': np.nan,
+                    'part_of_speech': np.nan,
+                    'change': comparison['relative_change'],
+                    'p': comparison['p_value'],
+                    'n_kept': comparison['n_total'],
+                    'n_discarded': comparison['n_discarded']
+                }
+                row[format_name] = comparison['accuracy_test']
+
+            results.append(row)
+
+        df = pd.DataFrame(results, index=self.EXPLANATION_FORMATS)
+        return df
+
+
+    def analyze_and_save_all_conservative(self, output_dir: str = "tables"):
+        """
+        Analyze all configurations using the conservative approach and save LaTeX files.
+
+        Args:
+            output_dir: Directory to save output files
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        llms = ['llama', 'qwen', 'prometheus']
+        task_types = ['single', 'pairwise']
+        cots = ['no_chain_of_thought']
+        explanation_types = ['attention', 'lime', 'shap']
+
+        successful_analyses = 0
+
+        for llm in llms:
+            for task_type in task_types:
+                for cot in cots:
+                    for exp in explanation_types:
+                        try:
+                            results_df = self.analyze_configuration_conservative(
+                                llm, task_type, cot, exp
+                            )
+
+                            conservative_config = ExperimentConfig(
+                                llm, task_type, cot, 'conservative', exp
+                            )
+
+                            individual_file = os.path.join(
+                                output_dir, f"{conservative_config}.tex"
+                            )
+                            self.save_latex_table(results_df, conservative_config, individual_file)
+
+                            successful_analyses += 1
+
+                        except FileNotFoundError as e:
+                            if llm == 'prometheus' and task_type == 'pairwise':
+                                print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                            elif llm != 'prometheus' and task_type == 'single':
+                                print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                        except Exception as e:
+                            if llm == 'prometheus' and task_type == 'pairwise':
+                                print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+                            elif llm != 'prometheus' and task_type == 'single':
+                                print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+
+        print(f"\n{'='*80}")
+        print(f"Conservative analysis complete!")
+        print(f"Successfully analyzed: {successful_analyses} configurations")
+        print(f"Output directory: {output_dir}")
+
 
 class AggregatedAnalyzer:
     """
@@ -1043,8 +1275,209 @@ class AggregatedAnalyzer:
                 explanation_type=explanation_type
             )
         return results
+
+    def compare_format_across_models_conservative(self,
+                                                cot: str,
+                                                baseline_format: str,
+                                                test_format: str,
+                                                explanation_type: str) -> Dict:
+        """
+        Compare baseline vs test format across all judge models using the conservative
+        approach: discarding instances where predictions differ between label orderings.
+
+        Args:
+            cot: Chain of thought setting
+            baseline_format: Baseline format name
+            test_format: Test format name
+            explanation_type: Explanation method
+
+        Returns:
+            Dictionary with aggregated conservative accuracy metrics and test results
+        """
+        all_tables = []
+        total_discarded = 0
+
+        for llm, task_type in self._get_model_configs():
+            config_pos_neg = ExperimentConfig(llm, task_type, cot, 'pos_neg', explanation_type)
+            config_neg_pos = ExperimentConfig(llm, task_type, cot, 'neg_pos', explanation_type)
+
+            try:
+                correct_baseline_pos_neg, correct_test_pos_neg, common_ids_pos_neg = \
+                    self.analyzer.get_correctness_arrays_with_common_ids(
+                        config_pos_neg, baseline_format, test_format
+                    )
+
+                correct_baseline_neg_pos, correct_test_neg_pos, common_ids_neg_pos = \
+                    self.analyzer.get_correctness_arrays_with_common_ids(
+                        config_neg_pos, baseline_format, test_format
+                    )
+
+                # Find shared ids
+                common_ids_neg_pos_set = set(common_ids_neg_pos)
+                shared_ids = [tid for tid in common_ids_pos_neg if tid in common_ids_neg_pos_set]
+
+                pos_neg_idx = {tid: i for i, tid in enumerate(common_ids_pos_neg)}
+                neg_pos_idx = {tid: i for i, tid in enumerate(common_ids_neg_pos)}
+
+                # Filter to consistent instances
+                consistent_ids = [
+                    tid for tid in shared_ids
+                    if (correct_baseline_pos_neg[pos_neg_idx[tid]] ==
+                        correct_baseline_neg_pos[neg_pos_idx[tid]] and
+                        correct_test_pos_neg[pos_neg_idx[tid]] ==
+                        correct_test_neg_pos[neg_pos_idx[tid]])
+                ]
+
+                total_discarded += len(shared_ids) - len(consistent_ids)
+
+                if not consistent_ids:
+                    continue
+
+                correct_baseline_consistent = np.array([
+                    correct_baseline_pos_neg[pos_neg_idx[tid]] for tid in consistent_ids
+                ])
+                correct_test_consistent = np.array([
+                    correct_test_pos_neg[pos_neg_idx[tid]] for tid in consistent_ids
+                ])
+
+                contingency_data = pd.DataFrame({
+                    'baseline': correct_baseline_consistent,
+                    'test': correct_test_consistent
+                })
+                contingency_table = SquareTable.from_data(contingency_data)
+                all_tables.append(contingency_table.table)
+
+            except FileNotFoundError:
+                continue
+
+        if not all_tables:
+            raise ValueError(f"No data found for {test_format} with {explanation_type}")
+
+        # Average all contingency tables across models
+        stacked = np.stack(all_tables, axis=0)
+        averaged_table = stacked.mean(axis=0)
+
+        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
+
+        n_total = averaged_table.sum()
+        both_wrong = averaged_table[0, 0]
+        got_better = averaged_table[0, 1]
+        got_worse = averaged_table[1, 0]
+        both_correct = averaged_table[1, 1]
+
+        accuracy_baseline = (got_worse + both_correct) / n_total
+        accuracy_test = (got_better + both_correct) / n_total
+
+        absolute_change = accuracy_test - accuracy_baseline
+        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
+
+        return {
+            'baseline_format': baseline_format,
+            'test_format': test_format,
+            'explanation_type': explanation_type,
+            'n_tables_aggregated': len(all_tables),
+            'n_total': n_total,
+            'n_discarded': total_discarded,
+            'accuracy_baseline': accuracy_baseline,
+            'accuracy_test': accuracy_test,
+            'absolute_change': absolute_change,
+            'relative_change': relative_change,
+            'both_correct': both_correct,
+            'got_worse': got_worse,
+            'got_better': got_better,
+            'both_wrong': both_wrong,
+            'mcnemar_statistic': mcnemar_result.statistic,
+            'p_value': mcnemar_result.pvalue,
+            'significant': mcnemar_result.pvalue < 0.05
+        }
+
+
+    def analyze_verbalization_formats_conservative(self,
+                                                    cot: str = 'no_chain_of_thought',
+                                                    explanation_type: str = 'shap') -> pd.DataFrame:
+        """
+        Analyze all verbalization formats against baseline using the conservative approach,
+        aggregated across all judge models.
+
+        Args:
+            cot: Chain of thought setting
+            explanation_type: Explanation method
+
+        Returns:
+            DataFrame with one row per verbalization format
+        """
+        formats = [f for f in McNemarAnalyzer.EXPLANATION_FORMATS if f != 'baseline']
+        results = []
+
+        for format_name in formats:
+            try:
+                comparison = self.compare_format_across_models_conservative(
+                    cot, 'baseline', format_name, explanation_type
+                )
+                results.append({
+                    'format': format_name.replace('_', ' ').title(),
+                    'baseline': comparison['accuracy_baseline'],
+                    'accuracy': comparison['accuracy_test'],
+                    'relative_change': comparison['relative_change'],
+                    'p_value': comparison['p_value'],
+                    'significant': comparison['significant'],
+                    'n_tables': comparison['n_tables_aggregated'],
+                    'n_discarded': comparison['n_discarded']
+                })
+            except (ValueError, FileNotFoundError) as e:
+                print(f"Skipping {format_name}: {e}")
+
+        df = pd.DataFrame(results).set_index('format')
+        return df
+
+
+    def analyze_all_explanation_types_conservative(self,
+                                                    cot: str = 'no_chain_of_thought') -> Dict[str, pd.DataFrame]:
+        """
+        Run the conservative aggregated analysis for all three explanation methods.
+
+        Args:
+            cot: Chain of thought setting
+
+        Returns:
+            Dictionary with explanation type as key and DataFrame as value
+        """
+        results = {}
+        for explanation_type in ['shap', 'lime', 'attention']:
+            print(f"Analyzing {explanation_type} (conservative)...")
+            results[explanation_type] = self.analyze_verbalization_formats_conservative(
+                cot=cot,
+                explanation_type=explanation_type
+            )
+        return results
+
+
+    def analyze_and_save_all_conservative(self, output_dir: str = "tables",
+                                        cot: str = 'no_chain_of_thought'):
+        """
+        Run the full conservative aggregated analysis for all explanation types
+        and save LaTeX tables.
+
+        Args:
+            output_dir: Directory to save output files
+            cot: Chain of thought setting
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        all_results = self.analyze_all_explanation_types_conservative(cot=cot)
+
+        for explanation_type, df in all_results.items():
+            output_file = os.path.join(
+                output_dir, f"conservative_{explanation_type}_all_models.tex"
+            )
+            self.save_latex_table(df, explanation_type, output_file, conservative=True)
+
+            print(f"\n{explanation_type.upper()} conservative results:")
+            print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant',
+                    'n_discarded']].to_string())
     
-    def to_latex(self, df: pd.DataFrame, explanation_type: str) -> str:
+    def to_latex(self, df: pd.DataFrame, explanation_type: str, 
+             conservative: bool = False) -> str:
         """
         Convert aggregated results DataFrame to LaTeX table.
         
@@ -1055,19 +1488,31 @@ class AggregatedAnalyzer:
         Returns:
             LaTeX table string
         """
-        def format_value(val, is_change=False, is_pvalue=False):
+        def format_value(val, is_change=False, is_pvalue=False, is_significant=False, is_positive=False):
             if pd.isna(val):
                 return '--'
             if is_pvalue:
-                return f'{val:.4f}'
+                formatted = f'{val:.4f}'
+                if is_significant and is_positive:  # added is_positive check here
+                    formatted = f'\\textbf{{{formatted}}}'
+                return formatted
             elif is_change:
-                return f'{val*100:.2f}'
+                sign = '+' if val > 0 else ''
+                formatted = f'{sign}{val*100:.2f}'
+                if is_significant and is_positive:
+                    formatted = f'\\textbf{{{formatted}}}'
+                return formatted
             else:
                 return f'{val*100:.2f}'
-        
-        caption = (f"Aggregated McNemar's Test across all judge models --- "
-                   f"{explanation_type.title()} explanations")
-        label = f"tab:aggregated-{explanation_type}-all-models"
+
+        if conservative:
+            caption = (f"Conservative Aggregated McNemar's Test across all judge models --- "
+                    f"{explanation_type.title()} explanations")
+            label = f"tab:conservative-aggregated-{explanation_type}-all-models"
+        else:
+            caption = (f"Aggregated McNemar's Test across all judge models --- "
+                    f"{explanation_type.title()} explanations")
+            label = f"tab:aggregated-{explanation_type}-all-models"
         
         latex_lines = []
         latex_lines.append(r'\begin{table}[htbp]')
@@ -1081,14 +1526,18 @@ class AggregatedAnalyzer:
             r'Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\'
         )
         latex_lines.append(r'\midrule')
-        
+
         for format_name, row in df.iterrows():
+            is_significant = row["p_value"] < 0.05 if not pd.isna(row["p_value"]) else False
+            is_positive = row["relative_change"] > 0 if not pd.isna(row["relative_change"]) else False
+            
             line = (f'{format_name} & '
                     f'{format_value(row["baseline"])} & '
                     f'{format_value(row["accuracy"])} & '
-                    f'{format_value(row["relative_change"], is_change=True)} & '
-                    f'{format_value(row["p_value"], is_pvalue=True)} \\\\')
+                    f'{format_value(row["relative_change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
+                    f'{format_value(row["p_value"], is_pvalue=True, is_significant=is_significant, is_positive=is_positive)} \\\\')
             latex_lines.append(line)
+        
         
         latex_lines.append(r'\bottomrule')
         latex_lines.append(r'\end{tabular}')
@@ -1097,9 +1546,9 @@ class AggregatedAnalyzer:
         return '\n'.join(latex_lines)
     
     def save_latex_table(self, df: pd.DataFrame, explanation_type: str,
-                         output_file: Optional[str] = None):
-        """Save aggregated results as a LaTeX table."""
-        latex_str = self.to_latex(df, explanation_type)
+                        output_file: Optional[str] = None,
+                        conservative: bool = False):
+        latex_str = self.to_latex(df, explanation_type, conservative=conservative)
         
         if output_file is None:
             output_file = f"all_models_{explanation_type}.tex"
@@ -1127,7 +1576,7 @@ class AggregatedAnalyzer:
             output_file = os.path.join(
                 output_dir, f"all_models_{explanation_type}.tex"
             )
-            self.save_latex_table(df, explanation_type, output_file)
+            self.save_latex_table(df, explanation_type, output_file, conservative=False)
             
             print(f"\n{explanation_type.upper()} results:")
             print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant']]
