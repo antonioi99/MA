@@ -636,7 +636,7 @@ class McNemarAnalyzer:
                 results_df = self.analyze_configuration(config)
                 
                 # Save individual LaTeX file
-                individual_file = os.path.join(output_dir, f"results_{config}.tex")
+                individual_file = os.path.join(output_dir, f"{config}.tex")
                 self.save_latex_table(results_df, config, individual_file)
                 
                 successful_analyses += 1
