@@ -272,7 +272,6 @@ class McNemarAnalyzer:
     def __init__(self, base_path: str = "analysis"):
         self.base_path = base_path
         self.results_cache = {}
-        self.latex_tables = []  # Store LaTeX output
         
     def get_file_path(self, config: ExperimentConfig, format_name: str) -> str:
         """Construct file path for a given configuration and format"""
@@ -596,26 +595,7 @@ class McNemarAnalyzer:
         
         print(f"Saved LaTeX table to: {output_file}")
         
-        # Also store in memory for combined export
-        self.latex_tables.append(latex_str)
     
-    def save_all_latex_tables(self, output_file: str = "all_results.tex"):
-        """
-        Save all accumulated LaTeX tables to a single file
-        
-        Args:
-            output_file: Output file path
-        """
-        if not self.latex_tables:
-            print("No tables to save. Run analyze_configuration() first.")
-            return
-        
-        with open(output_file, 'w', encoding='UTF-8') as f:
-            # Join all tables with newlines
-            combined = '\n\n'.join(self.latex_tables)
-            f.write(combined)
-        
-        print(f"Saved {len(self.latex_tables)} LaTeX tables to: {output_file}")
     
     def analyze_and_save_all(self, output_dir: str = "tables"):
         """
@@ -646,9 +626,6 @@ class McNemarAnalyzer:
             except Exception as e:
                 print(f"Error processing {config}: {e}")
         
-        # Save combined file
-        combined_file = os.path.join(output_dir, "all_results_combined.tex")
-        self.save_all_latex_tables(combined_file)
         
         print(f"\n{'='*80}")
         print(f"Analysis complete!")
@@ -897,12 +874,262 @@ class McNemarAnalyzer:
                                     if task_type == 'single':
                                         print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
 
-            
-        # Save combined file
-        combined_file = os.path.join(output_dir, "all_results_aggregated.tex")
-        self.save_all_latex_tables(combined_file)
-        
+
         print(f"\n{'='*80}")
         print(f"Aggregated analysis complete!")
         print(f"Successfully analyzed: {successful_analyses} configurations")
         print(f"Output directory: {output_dir}")
+
+
+class AggregatedAnalyzer:
+    """
+    Analyzer that aggregates McNemar's test results across all judge models
+    to identify verbalization format effects independently of the specific judge.
+    """
+    
+    def __init__(self, mcnemar_analyzer: McNemarAnalyzer):
+        """
+        Initialize with an existing McNemarAnalyzer instance.
+        
+        Args:
+            mcnemar_analyzer: An initialized McNemarAnalyzer with loaded data
+        """
+        self.analyzer = mcnemar_analyzer
+        self.latex_tables = []
+    
+    def _get_model_configs(self) -> list:
+        """Return the list of (llm, task_type) pairs used in the experiment."""
+        return [
+            ('llama', 'single'),
+            ('qwen', 'single'),
+            ('prometheus', 'pairwise')
+        ]
+    
+    def compare_format_across_models(self, 
+                                      cot: str,
+                                      baseline_format: str,
+                                      test_format: str,
+                                      explanation_type: str) -> Dict:
+        """
+        Compare baseline vs test format aggregating contingency tables
+        across all judge models and both prompting strategies.
+        
+        Args:
+            cot: Chain of thought setting
+            baseline_format: Baseline format name
+            test_format: Test format name
+            explanation_type: Explanation method (shap, lime, attention)
+        
+        Returns:
+            Dictionary with aggregated accuracy metrics and test results
+        """
+        all_tables = []
+        
+        for llm, task_type in self._get_model_configs():
+            for prompting in ['pos_neg', 'neg_pos']:
+                config = ExperimentConfig(llm, task_type, cot, prompting, explanation_type)
+                
+                try:
+                    correct_baseline, correct_test, _ = \
+                        self.analyzer.get_correctness_arrays_with_common_ids(
+                            config, baseline_format, test_format
+                        )
+                    
+                    contingency_data = pd.DataFrame({
+                        'baseline': correct_baseline,
+                        'test': correct_test
+                    })
+                    contingency_table = SquareTable.from_data(contingency_data)
+                    all_tables.append(contingency_table.table)
+                    
+                except FileNotFoundError:
+                    continue
+        
+        if not all_tables:
+            raise ValueError(f"No data found for {test_format} with {explanation_type}")
+        
+        # Average all contingency tables
+        stacked = np.stack(all_tables, axis=0)
+        averaged_table = stacked.mean(axis=0)
+        
+        # Perform McNemar's test on averaged table
+        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
+        
+        # Calculate accuracies from averaged table
+        n_total = averaged_table.sum()
+        both_wrong = averaged_table[0, 0]
+        got_better = averaged_table[0, 1]
+        got_worse = averaged_table[1, 0]
+        both_correct = averaged_table[1, 1]
+        
+        accuracy_baseline = (got_worse + both_correct) / n_total
+        accuracy_test = (got_better + both_correct) / n_total
+        
+        absolute_change = accuracy_test - accuracy_baseline
+        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
+        
+        return {
+            'baseline_format': baseline_format,
+            'test_format': test_format,
+            'explanation_type': explanation_type,
+            'n_tables_aggregated': len(all_tables),
+            'n_total': n_total,
+            'accuracy_baseline': accuracy_baseline,
+            'accuracy_test': accuracy_test,
+            'absolute_change': absolute_change,
+            'relative_change': relative_change,
+            'both_correct': both_correct,
+            'got_worse': got_worse,
+            'got_better': got_better,
+            'both_wrong': both_wrong,
+            'mcnemar_statistic': mcnemar_result.statistic,
+            'p_value': mcnemar_result.pvalue,
+            'significant': mcnemar_result.pvalue < 0.05
+        }
+    
+    def analyze_verbalization_formats(self, 
+                                       cot: str = 'no_chain_of_thought',
+                                       explanation_type: str = 'shap') -> pd.DataFrame:
+        """
+        Analyze all verbalization formats against baseline, aggregated across
+        all judge models and both prompting strategies.
+        
+        Args:
+            cot: Chain of thought setting
+            explanation_type: Explanation method (shap, lime, attention)
+        
+        Returns:
+            DataFrame with one row per verbalization format
+        """
+        formats = [f for f in McNemarAnalyzer.EXPLANATION_FORMATS if f != 'baseline']
+        results = []
+        
+        for format_name in formats:
+            try:
+                comparison = self.compare_format_across_models(
+                    cot, 'baseline', format_name, explanation_type
+                )
+                results.append({
+                    'format': format_name.replace('_', ' ').title(),
+                    'baseline': comparison['accuracy_baseline'],
+                    'accuracy': comparison['accuracy_test'],
+                    'relative_change': comparison['relative_change'],
+                    'p_value': comparison['p_value'],
+                    'significant': comparison['significant'],
+                    'n_tables': comparison['n_tables_aggregated']
+                })
+            except (ValueError, FileNotFoundError) as e:
+                print(f"Skipping {format_name}: {e}")
+        
+        df = pd.DataFrame(results).set_index('format')
+        return df
+    
+    def analyze_all_explanation_types(self, 
+                                       cot: str = 'no_chain_of_thought') -> Dict[str, pd.DataFrame]:
+        """
+        Run the aggregated analysis for all three explanation methods.
+        
+        Args:
+            cot: Chain of thought setting
+        
+        Returns:
+            Dictionary with explanation type as key and DataFrame as value
+        """
+        results = {}
+        for explanation_type in ['shap', 'lime', 'attention']:
+            print(f"Analyzing {explanation_type}...")
+            results[explanation_type] = self.analyze_verbalization_formats(
+                cot=cot,
+                explanation_type=explanation_type
+            )
+        return results
+    
+    def to_latex(self, df: pd.DataFrame, explanation_type: str) -> str:
+        """
+        Convert aggregated results DataFrame to LaTeX table.
+        
+        Args:
+            df: Results DataFrame from analyze_verbalization_formats
+            explanation_type: Explanation method name for caption
+        
+        Returns:
+            LaTeX table string
+        """
+        def format_value(val, is_change=False, is_pvalue=False):
+            if pd.isna(val):
+                return '--'
+            if is_pvalue:
+                return f'{val:.4f}'
+            elif is_change:
+                return f'{val*100:.2f}'
+            else:
+                return f'{val*100:.2f}'
+        
+        caption = (f"Aggregated McNemar's Test across all judge models --- "
+                   f"{explanation_type.title()} explanations")
+        label = f"tab:aggregated-{explanation_type}-all-models"
+        
+        latex_lines = []
+        latex_lines.append(r'\begin{table}[htbp]')
+        latex_lines.append(r'\centering')
+        latex_lines.append(r'\small')
+        latex_lines.append(f'\\caption{{{caption}}}')
+        latex_lines.append(f'\\label{{{label}}}')
+        latex_lines.append(r'\begin{tabular}{lrrrr}')
+        latex_lines.append(r'\toprule')
+        latex_lines.append(
+            r'Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\'
+        )
+        latex_lines.append(r'\midrule')
+        
+        for format_name, row in df.iterrows():
+            line = (f'{format_name} & '
+                    f'{format_value(row["baseline"])} & '
+                    f'{format_value(row["accuracy"])} & '
+                    f'{format_value(row["relative_change"], is_change=True)} & '
+                    f'{format_value(row["p_value"], is_pvalue=True)} \\\\')
+            latex_lines.append(line)
+        
+        latex_lines.append(r'\bottomrule')
+        latex_lines.append(r'\end{tabular}')
+        latex_lines.append(r'\end{table}')
+        
+        return '\n'.join(latex_lines)
+    
+    def save_latex_table(self, df: pd.DataFrame, explanation_type: str,
+                         output_file: Optional[str] = None):
+        """Save aggregated results as a LaTeX table."""
+        latex_str = self.to_latex(df, explanation_type)
+        
+        if output_file is None:
+            output_file = f"all_models_{explanation_type}.tex"
+        
+        with open(output_file, 'w', encoding='UTF-8') as f:
+            f.write(latex_str)
+        
+        print(f"Saved aggregated LaTeX table to: {output_file}")
+    
+    def analyze_and_save_all(self, output_dir: str = "tables",
+                              cot: str = 'no_chain_of_thought'):
+        """
+        Run the full aggregated analysis for all explanation types and save
+        LaTeX tables.
+        
+        Args:
+            output_dir: Directory to save output files
+            cot: Chain of thought setting
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        
+        all_results = self.analyze_all_explanation_types(cot=cot)
+        
+        for explanation_type, df in all_results.items():
+            output_file = os.path.join(
+                output_dir, f"all_models_{explanation_type}.tex"
+            )
+            self.save_latex_table(df, explanation_type, output_file)
+            
+            print(f"\n{explanation_type.upper()} results:")
+            print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant']]
+                  .to_string())
+        
