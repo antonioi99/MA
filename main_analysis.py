@@ -4,7 +4,7 @@ from helper_analysis import McNemarAnalyzer, quick_analyze, AggregatedAnalyzer
 
 def main():
 
-    analysis_main_folder = 'analysis'
+    analysis_main_folder = 'analysis/temperature_0.1'
 
     # CoT = ['chain_of_thought_True', 'no_chain_of_thought']
     llm = ['prometheus', 'qwen', 'llama']
@@ -16,7 +16,7 @@ def main():
                            "natural_words", "part_of_speech"]
 
     for model, explanation, prompt, order, exp_format  in product(llm, explanation_type, prompter, pred_order, explanation_formats):
-        subdirectory = f"{model}/{explanation}/{prompt}/no_chain_of_thought/{order}"
+        subdirectory = f"temperature_0.1/{model}/{explanation}/{prompt}/no_chain_of_thought/{order}"
         os.makedirs(f"{analysis_main_folder}/{subdirectory}", exist_ok=True)
 
         try:
@@ -33,14 +33,14 @@ def main():
 
     analyzer = McNemarAnalyzer(base_path="analysis")
 
-    analyzer.analyze_and_save_all(output_dir="tables/per_model")
-    analyzer.analyze_and_save_all_aggregated(output_dir="tables/per_model_aggregated")
-    analyzer.analyze_and_save_all_conservative(output_dir="tables/per_model_conservative")
+    analyzer.analyze_and_save_all(output_dir="tables/temperature_0.1/per_model")
+    analyzer.analyze_and_save_all_aggregated(output_dir="tables/temperature_0.1/per_model_aggregated")
+    analyzer.analyze_and_save_all_conservative(output_dir="tables/temperature_0.1/per_model_conservative")
 
     aggregated_analyzer = AggregatedAnalyzer(analyzer)
 
-    aggregated_analyzer.analyze_and_save_all(output_dir="tables/cross_model")
-    aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/cross_model_conservative")
+    aggregated_analyzer.analyze_and_save_all(output_dir="tables/temperature_0.1/cross_model")
+    aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/temperature_0.1/cross_model_conservative")
 
 
 if __name__ == '__main__':
