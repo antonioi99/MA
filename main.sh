@@ -5,7 +5,7 @@
 #SBATCH --container-mount-home 
 #SBATCH --mem=40G
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
+# #SBATCH --gres=gpu:1
 # #SBATCH --nodelist=dgx1
 # #SBATCH --exclude=dgx1
 #SBATCH --time=0-20:00:00

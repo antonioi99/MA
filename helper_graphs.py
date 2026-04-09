@@ -405,11 +405,22 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
         for exp, c in explanation_colors.items()
     ]
 
-    leg1 = ax.legend(handles=model_legend, title='Model', loc='upper left',
-                     fontsize=9, title_fontsize=9)
-    ax.add_artist(leg1)
-    ax.legend(handles=exp_legend, title='Explanation', loc='lower left',
-              fontsize=9, title_fontsize=9)
+
+    all_handles = (
+        [mpatches.Patch(color='none', label=r'$\bf{Model}$')] +  # group title
+        model_legend +
+        [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +  # group title
+        exp_legend 
+    )
+
+    ax.legend(
+        handles=all_handles,
+        loc='upper right',
+        fontsize=9,
+        frameon=True,
+        handlelength=1.5,
+        borderpad=0.8
+    )
 
     ax.grid(alpha=0.3)
     plt.tight_layout()
@@ -505,13 +516,26 @@ def plot_volcano(df: pd.DataFrame,
         plt.Line2D([0], [0], color='black', linestyle='--', label='$p = 0.05$')
     ]
 
-    leg1 = ax.legend(handles=model_legend, title='Model', loc='upper left',
-                     fontsize=9, title_fontsize=9)
-    ax.add_artist(leg1)
-    leg2 = ax.legend(handles=exp_legend, title='Explanation', loc='upper center',
-                     fontsize=9, title_fontsize=9)
-    ax.add_artist(leg2)
-    ax.legend(handles=region_legend, loc='upper right', fontsize=9)
+
+    all_handles = (
+        [mpatches.Patch(color='none', label=r'$\bf{Model}$')] +  # group title
+        model_legend +
+        #[separator] +
+        [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +  # group title
+        exp_legend +
+        #[separator] +
+        [mpatches.Patch(color='none', label=r'$\bf{Region}$')] +  # group title
+        region_legend
+    )
+
+    ax.legend(
+        handles=all_handles,
+        loc='lower right',
+        fontsize=9,
+        frameon=True,
+        handlelength=1.5,
+        borderpad=0.8
+    )
 
     ax.grid(alpha=0.3)
     plt.tight_layout()
@@ -537,7 +561,16 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
         'Attention': '#9C27B0'
     }
 
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5), sharey=False)
+    # Compute global symmetric axis limits across all models
+    all_vals = pd.concat([
+        df_order['relative_change_neg_pos'],
+        df_order['relative_change_pos_neg']
+    ])
+    abs_max = max(abs(all_vals.min()), abs(all_vals.max())) + 0.2
+    global_min = -abs_max
+    global_max = abs_max
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5), sharex=True, sharey=True)
 
     for col_idx, model in enumerate(models):
         ax = axes[col_idx]
@@ -547,7 +580,6 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
             exp_subset = subset[subset['explanation'] == exp]
 
             for _, row in exp_subset.iterrows():
-                # Determine significance
                 either_sig = row['significant_pos_neg'] or row['significant_neg_pos']
                 both_sig = row['significant_pos_neg'] and row['significant_neg_pos']
 
@@ -563,19 +595,21 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
                     zorder=3
                 )
 
-        # Diagonal line (consistent behavior)
-        all_vals = pd.concat([
-            subset['relative_change_neg_pos'],
-            subset['relative_change_pos_neg']
-        ])
-        lim_min = all_vals.min() - 0.5
-        lim_max = all_vals.max() + 0.5
-        ax.plot([lim_min, lim_max], [lim_min, lim_max],
+        # Diagonal line using global limits
+        ax.plot([global_min, global_max], [global_min, global_max],
                 color='black', linewidth=1, linestyle='--',
                 alpha=0.5, label='Diagonal (consistent)')
 
         ax.axvline(x=0, color='gray', linewidth=0.8, linestyle=':', alpha=0.4)
         ax.axhline(y=0, color='gray', linewidth=0.8, linestyle=':', alpha=0.4)
+
+        # Set same limits for all panels
+        ax.set_xlim(global_min, global_max)
+        ax.set_ylim(global_min, global_max)
+
+        ticks = np.arange(np.floor(global_min), np.ceil(global_max) + 1, 1)
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
 
         ax.set_title(model, fontsize=12, fontweight='bold')
         ax.set_xlabel('Relative Change — NEGATIVE first (%)', fontsize=9)
