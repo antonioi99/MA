@@ -548,9 +548,11 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
                                  output_file: str = 'figures/scatter_label_order.png'):
     """
     Scatter plot comparing relative change for pos_neg vs neg_pos label orders.
-    Points on the diagonal behave consistently regardless of label order.
-    Points far from the diagonal are strongly affected by positional bias.
-    One panel per model.
+    Four marker shapes:
+    - Circle: neither ordering significant
+    - Triangle up: only pos_neg significant
+    - Triangle down: only neg_pos significant
+    - Star: both orderings significant
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -561,16 +563,32 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
         'Attention': '#9C27B0'
     }
 
-    # Compute global symmetric axis limits across all models
+    # Marker definitions
+    # (condition_function, marker, label, size)
+    def get_marker(sig_pos_neg, sig_neg_pos):
+        if not sig_pos_neg and not sig_neg_pos:
+            return 'o', 60, 'Neither significant'
+        elif sig_pos_neg and not sig_neg_pos:
+            return '^', 80, 'Only POSITIVE first significant'
+        elif not sig_pos_neg and sig_neg_pos:
+            return 'v', 80, 'Only NEGATIVE first significant'
+        else:
+            return '*', 120, 'Both significant'
+
+    # Compute global symmetric axis limits
     all_vals = pd.concat([
         df_order['relative_change_neg_pos'],
         df_order['relative_change_pos_neg']
     ])
-    abs_max = max(abs(all_vals.min()), abs(all_vals.max())) + 0.2
+    abs_max = max(abs(all_vals.min()), abs(all_vals.max())) + 0.5
     global_min = -abs_max
     global_max = abs_max
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5), sharex=True, sharey=True)
+
+    # Track which marker/label combinations have been added to legend
+    legend_markers_added = set()
+    legend_handles = []
 
     for col_idx, model in enumerate(models):
         ax = axes[col_idx]
@@ -580,65 +598,100 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
             exp_subset = subset[subset['explanation'] == exp]
 
             for _, row in exp_subset.iterrows():
-                either_sig = row['significant_pos_neg'] or row['significant_neg_pos']
-                both_sig = row['significant_pos_neg'] and row['significant_neg_pos']
-
-                alpha = 0.85 if either_sig else 0.4
-                size = 100 if both_sig else 70
+                marker, size, marker_label = get_marker(
+                    row['significant_pos_neg'],
+                    row['significant_neg_pos']
+                )
 
                 ax.scatter(
                     row['relative_change_neg_pos'],
                     row['relative_change_pos_neg'],
+                    marker=marker,
                     color=color,
                     s=size,
-                    alpha=alpha,
+                    alpha=0.75,
                     zorder=3
                 )
 
-        # Diagonal line using global limits
+                # Collect unique marker types for legend
+                if marker_label not in legend_markers_added:
+                    legend_markers_added.add(marker_label)
+                    legend_handles.append(
+                        plt.scatter([], [], marker=marker, color='gray',
+                                    s=size, alpha=0.75, label=marker_label)
+                    )
+
+        # Diagonal line
         ax.plot([global_min, global_max], [global_min, global_max],
-                color='black', linewidth=1, linestyle='--',
-                alpha=0.5, label='Diagonal (consistent)')
+                color='black', linewidth=1, linestyle='--', alpha=0.5)
 
-        ax.axvline(x=0, color='gray', linewidth=0.8, linestyle=':', alpha=0.4)
-        ax.axhline(y=0, color='gray', linewidth=0.8, linestyle=':', alpha=0.4)
+        ax.axvline(x=0, color='black', linewidth=1, linestyle='-', alpha=0.5)
+        ax.axhline(y=0, color='black', linewidth=1, linestyle='-', alpha=0.5)
 
-        # Set same limits for all panels
         ax.set_xlim(global_min, global_max)
         ax.set_ylim(global_min, global_max)
 
+        # Ticks at every 1% interval
         ticks = np.arange(np.floor(global_min), np.ceil(global_max) + 1, 1)
         ax.set_xticks(ticks)
         ax.set_yticks(ticks)
 
         ax.set_title(model, fontsize=12, fontweight='bold')
-        ax.set_xlabel('Relative Change — NEGATIVE first (%)', fontsize=9)
+        ax.set_xlabel('Relative Change --- NEGATIVE first (%)', fontsize=9)
         if col_idx == 0:
-            ax.set_ylabel('Relative Change — POSITIVE first (%)', fontsize=9)
+            ax.set_ylabel('Relative Change --- POSITIVE first (%)', fontsize=9)
         ax.grid(alpha=0.3)
 
-    # Legend
+    # Build combined legend
     exp_legend = [
         mpatches.Patch(color=c, label=exp)
         for exp, c in explanation_colors.items()
     ]
-    size_legend = [
-        plt.scatter([], [], color='gray', s=100, alpha=0.85,
-                    label='At least one order significant'),
-        plt.scatter([], [], color='gray', s=70, alpha=0.4,
-                    label='Neither order significant'),
-        plt.Line2D([0], [0], color='black', linestyle='--',
-                   label='Diagonal (consistent behavior)')
+
+    # Sort marker legend by a defined order
+    marker_order = [
+        'Neither significant',
+        'Only POSITIVE first significant',
+        'Only NEGATIVE first significant',
+        'Both significant'
     ]
+    legend_handles_sorted = sorted(
+        legend_handles,
+        key=lambda h: marker_order.index(h.get_label())
+        if h.get_label() in marker_order else 99
+    )
+
+    from matplotlib.lines import Line2D
+    all_handles = (
+        # [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
+        exp_legend +
+        # [mpatches.Patch(color='none', label=r'$\bf{Significance}$')] +
+        legend_handles_sorted +
+        # [mpatches.Patch(color='none', label=r'$\bf{Reference}$')] +
+        [Line2D([0], [0], color='black', linestyle='--',
+                label='Diagonal (consistent behavior)')]
+    )
+
+    # fig.legend(
+    #     handles=all_handles,
+    #     loc='upper left',
+    #     bbox_to_anchor=(1.01, 1.0),
+    #     fontsize=9,
+    #     frameon=True,
+    #     handlelength=1.5,
+    #     borderpad=0.8
+    # )
 
     fig.legend(
-        handles=exp_legend + size_legend,
-        loc='lower center',
-        ncol=6,
-        fontsize=9,
-        bbox_to_anchor=(0.5, -0.08),
-        frameon=True
-    )
+            handles=all_handles,
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.10),
+            fontsize=9,
+            frameon=True,
+            handlelength=1.5,
+            borderpad=0.8,
+            ncol=len(all_handles) #// 2  # two rows
+        )
 
     fig.suptitle(
         'Relative Change by Label Order: NEGATIVE first vs POSITIVE first\n'
