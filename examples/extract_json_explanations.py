@@ -8,9 +8,9 @@ for entry_id, entry in data.items():
     results.append({
         "id": entry_id,
         "label": entry["label"],
-        "shap_structured_text_scores": entry["shap"]["structured_text_scores"],
-        "lime_structured_text_scores": entry["lime"]["structured_text_scores"],
-        "attention_structured_text_scores": entry["attention"]["structured_text_scores"],
+        "shap_text_scores": entry["shap"]["text_scores"],
+        "lime_text_scores": entry["lime"]["text_scores"],
+        "attention_text_scores": entry["attention"]["text_scores"],
     })
 
 

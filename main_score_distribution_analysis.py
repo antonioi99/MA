@@ -242,18 +242,45 @@ def find_threshold_for_percentile(scores, percentile, use_abs=True):
 
 def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores,
                                     shap_threshold=0.01):
-    """Calculate matching thresholds for LIME and Attention based on SHAP threshold."""
+    
+    # SHAP: compute percentile of words cut off
     shap_percentile = calculate_exact_percentile(shap_scores, shap_threshold, use_abs=True)
-    
-    lime_threshold = find_threshold_for_percentile(lime_scores, shap_percentile, use_abs=True)
-    attention_threshold = find_threshold_for_percentile(attention_scores, shap_percentile, use_abs=False)
-    
     percentage_highlighted = 100 - shap_percentile
+
+    # LIME: check how many non-zero scores we already have
+    lime_nonzero_percentage = (np.abs(lime_scores) > 0).sum() / len(lime_scores) * 100
     
+    print(f"\nLIME non-zero scores: {lime_nonzero_percentage:.2f}% of all scores")
+    print(f"SHAP target retention: {percentage_highlighted:.2f}% of all scores")
+
+    if lime_nonzero_percentage <= percentage_highlighted:
+        # LIME already has fewer non-zero words than SHAP retains
+        # Just use a very small threshold to keep all non-zero scores
+        lime_threshold = 1e-10
+        print(f"LIME non-zero words ({lime_nonzero_percentage:.2f}%) already below "
+              f"SHAP target ({percentage_highlighted:.2f}%) → keeping all non-zero scores")
+    else:
+        # LIME has more non-zero words than SHAP retains
+        # Need to cut some non-zero LIME scores
+        lime_nonzero = lime_scores[np.abs(lime_scores) > 0]
+        # Find threshold that retains percentage_highlighted% of ALL lime scores
+        target_nonzero_percentile = 100 - (percentage_highlighted / lime_nonzero_percentage * 100)
+        lime_threshold = find_threshold_for_percentile(lime_nonzero, target_nonzero_percentile, use_abs=True)
+        print(f"LIME has more non-zero words than target → applying threshold {lime_threshold:.6f}")
+
+    # ATTENTION: unchanged
+    attention_threshold = find_threshold_for_percentile(attention_scores, shap_percentile, use_abs=False)
+
+    # Verify
     shap_verify = 100 - calculate_exact_percentile(shap_scores, shap_threshold, use_abs=True)
     lime_verify = 100 - calculate_exact_percentile(lime_scores, lime_threshold, use_abs=True)
     attention_verify = 100 - calculate_exact_percentile(attention_scores, attention_threshold, use_abs=False)
-    
+
+    print(f"\nFinal retention rates:")
+    print(f"  SHAP:      {shap_verify:.2f}% of all words")
+    print(f"  LIME:      {lime_verify:.2f}% of all words")
+    print(f"  Attention: {attention_verify:.2f}% of all words")
+
     results = {
         'shap': {
             'threshold': shap_threshold,
@@ -272,7 +299,7 @@ def match_thresholds_across_methods(shap_scores, lime_scores, attention_scores,
         },
         'target_percentage_highlighted': percentage_highlighted
     }
-    
+
     return results
 
 
