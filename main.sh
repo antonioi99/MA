@@ -1,7 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name="ma_antonio"
-#SBATCH --container-image="ghcr.io#loris3/antonio:latest"
+#SBATCH --container-image=/srv/home/users/a12225670cs/MA/loris3+antonio+latest.sqsh
+# #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
 #SBATCH --container-mount-home 
 #SBATCH --mem=40G
 #SBATCH --cpus-per-task=8
@@ -16,7 +17,7 @@
 #SBATCH --requeue
 #SBATCH --container-writable
 
-# #SBATCH --begin=now+8hours
+# #SBATCH --begin=now+1hours
 
 export $(grep -v '^#' .env | xargs)
 
@@ -29,4 +30,4 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_graphs.py
+python main_explanations.py --type merge
