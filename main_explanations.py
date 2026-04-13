@@ -39,12 +39,15 @@ def main():
             model = model.to('cuda')
             tokenizer = AutoTokenizer.from_pretrained(FINETUNED_CLASSIFICATION_MODEL)
 
-        # ===== WORK WITH A SUBSET =====
-        subset_size = args.subset_size
-        start = args.start
-        end = start + subset_size
 
         dataset_split = load_dataset("antonio4210/imdb-dev-test-split", split="dev")
+        
+        # ===== WORK WITH A SUBSET =====
+        start = args.start if args.start is not None else 0
+        if args.subset_size is not None:
+            end = start + args.subset_size
+        else:
+            end = len(dataset_split['text'])
 
         subset_texts = dataset_split['text'][start:end]
         subset_labels = dataset_split['label'][start:end]

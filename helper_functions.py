@@ -38,6 +38,7 @@ class ExplanationFormatter:
     def __init__(self):
         self.explanation_type = None
         self.processed_data = []
+        self.attention_predictions = None
         try:
             import en_core_web_sm
             self.nlp = en_core_web_sm.load()
@@ -175,22 +176,22 @@ class ExplanationFormatter:
         Uses the mean attention scores (recommended aggregation method).
         """
         extracted_data = []
-        
+        self.attention_predictions = []
+
         for explanation in attention_explanations:
             words = [word_info['word'] for word_info in explanation['words']]
-            # Use mean attention as the primary score (you can change to 'max' or 'sum' if preferred)
             scores = [word_info['attention_mean'] for word_info in explanation['words']]
-            
+            self.attention_predictions.append(explanation['prediction'])
             extracted_data.append((words, scores))
-        
-        return extracted_data
 
+        return extracted_data
 
     def load_explanations(self, explanations, explanation_type: str):
         """
         Load explanations and prepare them for formatting
         """
         self.explanation_type = explanation_type.lower()
+        self.attention_predictions = None
 
         if self.explanation_type == 'shap':
             self.processed_data = self._extract_shap_data(explanations)
@@ -201,6 +202,18 @@ class ExplanationFormatter:
         else:
             raise ValueError("explanation_type must be 'shap', 'lime', or 'attention'")
 
+    def _get_prediction(self, idx: int, scores: List[float]) -> str:
+        """
+        Helper method to get the prediction label for a given index.
+        For attention: uses the actual prediction stored in the explanation.
+        For SHAP/LIME: infers from the average score direction.
+        """
+        if self.explanation_type == 'attention' and self.attention_predictions is not None:
+            return "POSITIVE" if self.attention_predictions[idx] == 1 else "NEGATIVE"
+        else:
+            avg_score = sum(scores) / len(scores) if scores else 0
+            return "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+
 
 
     def extract_as_text(self, brackets, threshold: float = 0.01) -> List[str]:
@@ -210,25 +223,22 @@ class ExplanationFormatter:
         """
         results = []
 
-        for words, scores in self.processed_data:
+        for idx, (words, scores) in enumerate(self.processed_data):
 
-            avg_score = sum(scores) / len(scores) if scores else 0
-            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+            prediction = self._get_prediction(idx, scores)
 
             result_parts = []
 
             for word, score in zip(words, scores):
                 if self.explanation_type == 'attention':
-                    # Only mark words with HIGH attention (above threshold)
                     if score >= threshold:
                         if brackets == 'label':
                             result_parts.append(f"{word}[HIGH]")
                         elif brackets == 'score':
                             result_parts.append(f"{word}[{score:.3f}]")
                     else:
-                        # No marking for low attention words
                         result_parts.append(word)
-                else:  # SHAP/LIME - original behavior
+                else:
                     if abs(score) < threshold:
                         result_parts.append(word)
                     else:
@@ -238,14 +248,13 @@ class ExplanationFormatter:
                         elif brackets == 'score':
                             sign = "+" if score >= 0 else ""
                             result_parts.append(f"{word}[{sign}{score:.3f}]")
-            
-            # Different explanations for attention vs SHAP/LIME
+
             if self.explanation_type == 'attention':
                 if brackets == 'score':
                     explanation = f"The model predicted {prediction}. Bracketed scores show how much attention the model paid to each word (0.0 = ignored, 1.0 = highest attention).\n\n"
                 elif brackets == 'label':
                     explanation = f"The model predicted {prediction}. Words marked [HIGH] received strong attention from the model when making its prediction.\n\n"
-            else:  # SHAP or LIME
+            else:
                 if brackets == 'score':
                     explanation = f"The model predicted {prediction}. Bracketed scores indicate each word's contribution to the overall sentiment (negative scores pull toward negative sentiment, positive scores pull toward positive sentiment).\n\n"
                 elif brackets == 'label':
@@ -255,6 +264,7 @@ class ExplanationFormatter:
 
         return results
 
+
     def extract_as_structured_text(self, brackets, threshold: float = 0.01) -> List[str]:
         """
         Format explanations as structured text
@@ -262,35 +272,33 @@ class ExplanationFormatter:
         """
         results = []
 
-        for words, scores in self.processed_data:
+        for idx, (words, scores) in enumerate(self.processed_data):
 
-            avg_score = sum(scores) / len(scores) if scores else 0
-            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+            prediction = self._get_prediction(idx, scores)
 
             if self.explanation_type == 'attention':
-                # For attention: only show HIGH attention words
                 high_attention = []
-                
+
                 for word, score in zip(words, scores):
                     if score >= threshold:
                         if brackets == 'score':
                             high_attention.append(f"{word}[{score:.3f}]")
                         elif brackets == 'label':
                             high_attention.append(word)
-                
+
                 result_parts = []
                 if brackets == 'score':
                     explanation = f"The model predicted {prediction}. These words received high attention from the model (scores range from 0.0 = ignored to 1.0 = highest attention).\n\n"
                 elif brackets == 'label':
                     explanation = f"The model predicted {prediction}. These words received high attention from the model when making its prediction.\n\n"
-                
+
                 result_parts.append(explanation)
                 if high_attention:
                     result_parts.append(f"HIGH ATTENTION: {' '.join(high_attention)}")
                 else:
                     result_parts.append("HIGH ATTENTION: (none above threshold)")
-            
-            else:  # SHAP or LIME - original code
+
+            else:
                 positive_words = []
                 negative_words = []
                 neutral_words = []
@@ -314,7 +322,7 @@ class ExplanationFormatter:
                     explanation = f"The model predicted {prediction}. Words are grouped by sentiment: POSITIVE, NEGATIVE, and NEUTRAL. Scores indicate contribution strength.\n\n"
                 elif brackets == 'label':
                     explanation = f"The model predicted {prediction}. Words are grouped by their sentiment contribution: POSITIVE, NEGATIVE, and NEUTRAL.\n\n"
-                
+
                 result_parts.append(explanation)
                 if positive_words:
                     result_parts.append(f"POSITIVE SENTIMENT: {' '.join(positive_words)}")
@@ -327,23 +335,23 @@ class ExplanationFormatter:
 
         return results
 
+
     def extract_top_words(self, brackets, top_n: int = 20) -> List[str]:
         """
         Extract top N most influential/attended words
         """
         results = []
 
-        for words, scores in self.processed_data:
+        for idx, (words, scores) in enumerate(self.processed_data):
 
-            avg_score = sum(scores) / len(scores) if scores else 0
-            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
+            prediction = self._get_prediction(idx, scores)
 
             word_scores = list(zip(words, scores))
             word_scores.sort(key=lambda x: abs(x[1]), reverse=True)
 
             top_words = word_scores[:top_n]
             result_parts = []
-            
+
             if self.explanation_type == 'attention':
                 if brackets == 'score':
                     explanation = f"The model predicted {prediction}. These are the most attended words (scores: 0.0 = ignored, 1.0 = highest attention):\n\n"
@@ -353,7 +361,7 @@ class ExplanationFormatter:
                     explanation = f"The model predicted {prediction}. These words received the highest attention:\n\n"
                     for word, score in top_words:
                         result_parts.append(f"{word} [HIGH]\n")
-            else:  # SHAP or LIME
+            else:
                 if brackets == 'score':
                     explanation = f"The model predicted {prediction}. These are the most influential words for this prediction. Scores show contribution (negative = toward negative, positive = toward positive):\n\n"
                     for word, score in top_words:
@@ -363,180 +371,147 @@ class ExplanationFormatter:
                     for word, score in top_words:
                         sentiment = "POSITIVE" if score > 0 else "NEGATIVE"
                         result_parts.append(f"{word} [{sentiment}]\n")
-                        
+
             results.append(explanation + ''.join(result_parts))
 
         return results
-        
 
 
     def extract_as_natural_explanation(self, top_n: int = 5) -> List[str]:
         """
         Format explanations as natural language sentences explaining the prediction
-        
-        Args:
-            top_n: Number of top influential words to include
         """
         import string
-        
-        # Common conjunctions to filter out
+
         conjunctions = {
-            'and', 'but', 'or', 'nor', 'for', 'yet', 'so', 
+            'and', 'but', 'or', 'nor', 'for', 'yet', 'so',
             'although', 'because', 'since', 'unless', 'while',
             'if', 'then', 'than', 'that', 'though', 'whether'
         }
-        
+
         results = []
-        
+
         for idx, (words, scores) in enumerate(self.processed_data):
-            # Determine prediction based on average score
-            avg_score = sum(scores) / len(scores) if scores else 0
-            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
-            
-            # Get top influential words
+
+            prediction = self._get_prediction(idx, scores)
+
             word_scores = list(zip(words, scores))
-            
+
             if self.explanation_type == 'attention':
-                # For attention: just get words with highest attention scores
                 relevant_words = [(w, s) for w, s in word_scores]
             else:
-                # For SHAP/LIME: filter for words that align with the prediction
                 if prediction == "POSITIVE":
                     relevant_words = [(w, s) for w, s in word_scores if s > 0]
                 else:
                     relevant_words = [(w, s) for w, s in word_scores if s < 0]
-            
-            # Filter out punctuation and conjunctions
+
             filtered_words = [
                 (word, score) for word, score in relevant_words
-                if word not in string.punctuation 
+                if word not in string.punctuation
                 and word.lower() not in conjunctions
                 and len(word) > 2
             ]
-            
-            # Sort by absolute score and get top N
-            filtered_words.sort(key=lambda x: abs(x[1]), reverse=True)
-            
-            # Get top words (already reconstructed, no need for fragment reconstruction)
-            top_words = []
-            seen_words = set()  # Avoid duplicates
-            
-            for word, _ in filtered_words[:top_n * 2]:  # Get more candidates in case of duplicates
-                if len(top_words) >= top_n:
-                    break
-                
-                # Add if not already seen
-                if word.lower() not in seen_words:
-                    top_words.append(word)
-                    seen_words.add(word.lower())
-            
-            # Format as natural sentence (different wording for attention)
-            if top_words:
-                words_str = ", ".join(top_words)
-                if self.explanation_type == 'attention':
-                    result = f"The model predicted {prediction} while paying most attention the following words: {words_str}"
-                else:
-                    result = f"The model predicted {prediction} because of the following words: {words_str}"
-            else:
-                result = f"The model predicted {prediction}"
-            
-            results.append(result)
-        
-        return results
 
-    def extract_pos(self, top_n: int = 5, context_window: int = 2, pos = {"ADJ", "VERB", "NOUN", "ADV"}) -> List[str]:
-        """
-        Extract adjectives, verbs, and nouns with contextual POS tagging
-        
-        Args:
-            top_n: Number of top influential words to include
-            context_window: Number of surrounding words to use for POS tagging
-            pos: Set of POS tags to include
-        """
-        if self.nlp is None:
-            raise RuntimeError("spaCy model not loaded")
-        
-        import string
-        
-        results = []
-        
-        for idx, (words, scores) in enumerate(self.processed_data):
-            # Determine prediction
-            avg_score = sum(scores) / len(scores) if scores else 0
-            prediction = "POSITIVE" if avg_score >= 0 else "NEGATIVE"
-            
-            # Build context for each word (use surrounding words)
-            word_to_pos = {}
-            for i, word in enumerate(words):
-                if len(word) <= 2:
-                    continue
-                
-                # Get context window around the word
-                start = max(0, i - context_window)
-                end = min(len(words), i + context_window + 1)
-                context = " ".join(words[start:end])
-                
-                doc = self.nlp(context)
-                # Find the token that matches our word
-                for token in doc:
-                    if token.text.lower() == word.lower():
-                        word_to_pos[word] = token.pos_
-                        break
-            
-            word_scores = list(zip(words, scores))
-            
-            # Filter for content words
-            content_pos = pos
-            
-            if self.explanation_type == 'attention':
-                # For attention: get all content words (no positive/negative filtering)
-                relevant_words = [(w, s) for w, s in word_scores 
-                                if word_to_pos.get(w) in content_pos
-                                and len(w) > 2
-                                and w not in string.punctuation]
-            else:
-                # For SHAP/LIME: filter by prediction direction
-                if prediction == "POSITIVE":
-                    relevant_words = [(w, s) for w, s in word_scores 
-                                    if s > 0 
-                                    and word_to_pos.get(w) in content_pos
-                                    and len(w) > 2
-                                    and w not in string.punctuation]
-                else:
-                    relevant_words = [(w, s) for w, s in word_scores 
-                                    if s < 0 
-                                    and word_to_pos.get(w) in content_pos
-                                    and len(w) > 2
-                                    and w not in string.punctuation]
-            
-            # Sort by absolute score and get top N
-            relevant_words.sort(key=lambda x: abs(x[1]), reverse=True)
-            
-            # Get top words (already reconstructed)
+            filtered_words.sort(key=lambda x: abs(x[1]), reverse=True)
+
             top_words = []
             seen_words = set()
-            
-            for word, _ in relevant_words[:top_n * 2]:  # Get more candidates
+
+            for word, _ in filtered_words[:top_n * 2]:
                 if len(top_words) >= top_n:
                     break
-                
-                # Add if not already seen
                 if word.lower() not in seen_words:
                     top_words.append(word)
                     seen_words.add(word.lower())
-            
-            # Format result (different wording for attention)
+
             if top_words:
                 words_str = ", ".join(top_words)
                 if self.explanation_type == 'attention':
                     result = f"The model predicted {prediction} while paying most attention to the following words: {words_str}"
                 else:
-                    result = f"The model predicted {prediction} because of following words: {words_str}"
+                    result = f"The model predicted {prediction} because of the following words: {words_str}"
+            else:
+                result = f"The model predicted {prediction}"
+
+            results.append(result)
+
+        return results
+
+
+    def extract_pos(self, top_n: int = 5, context_window: int = 2, 
+                    pos={"ADJ", "VERB", "NOUN", "ADV"}) -> List[str]:
+        """
+        Extract adjectives, verbs, and nouns with contextual POS tagging
+        """
+        if self.nlp is None:
+            raise RuntimeError("spaCy model not loaded")
+
+        import string
+
+        results = []
+
+        for idx, (words, scores) in enumerate(self.processed_data):
+
+            prediction = self._get_prediction(idx, scores)
+
+            word_to_pos = {}
+            for i, word in enumerate(words):
+                if len(word) <= 2:
+                    continue
+                start = max(0, i - context_window)
+                end = min(len(words), i + context_window + 1)
+                context = " ".join(words[start:end])
+                doc = self.nlp(context)
+                for token in doc:
+                    if token.text.lower() == word.lower():
+                        word_to_pos[word] = token.pos_
+                        break
+
+            word_scores = list(zip(words, scores))
+            content_pos = pos
+
+            if self.explanation_type == 'attention':
+                relevant_words = [(w, s) for w, s in word_scores
+                                if word_to_pos.get(w) in content_pos
+                                and len(w) > 2
+                                and w not in string.punctuation]
+            else:
+                if prediction == "POSITIVE":
+                    relevant_words = [(w, s) for w, s in word_scores
+                                    if s > 0
+                                    and word_to_pos.get(w) in content_pos
+                                    and len(w) > 2
+                                    and w not in string.punctuation]
+                else:
+                    relevant_words = [(w, s) for w, s in word_scores
+                                    if s < 0
+                                    and word_to_pos.get(w) in content_pos
+                                    and len(w) > 2
+                                    and w not in string.punctuation]
+
+            relevant_words.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            top_words = []
+            seen_words = set()
+
+            for word, _ in relevant_words[:top_n * 2]:
+                if len(top_words) >= top_n:
+                    break
+                if word.lower() not in seen_words:
+                    top_words.append(word)
+                    seen_words.add(word.lower())
+
+            if top_words:
+                words_str = ", ".join(top_words)
+                if self.explanation_type == 'attention':
+                    result = f"The model predicted {prediction} while paying most attention to the following words: {words_str}"
+                else:
+                    result = f"The model predicted {prediction} because of the following words: {words_str}"
             else:
                 result = f"The model predicted {prediction} (no significant words found)"
-            
+
             results.append(result)
-        
+
         return results
 
     
@@ -598,21 +573,33 @@ class ExplanationProcessor:
         threshold_lime: float,
         threshold_attention: float
     ):
-        data_dict = {}
+        # Load existing results if file already exists
+        output_path = Path(output_json)
+        if output_path.exists():
+            with open(output_path, "r", encoding="utf-8") as f:
+                data_dict = json.load(f)
+            tqdm.write(f"Resuming from existing file: {len(data_dict)} samples already processed.")
+        else:
+            data_dict = {}
+
         shap_dir = Path(shap_pkl_dir)
         shap_random_dir = Path(shap_random_pkl_dir)
         lime_dir = Path(lime_pkl_dir) if lime_pkl_dir else None
         attention_dir = Path(attention_pkl_dir) if attention_pkl_dir else None  
         
-        for idx, sample in enumerate(samples):
+        for idx, sample in enumerate(tqdm(samples, desc="Processing explanations", unit="sample")):
 
             # Derive doc_hash from document content
             doc_hash = hashlib.md5(sample.encode("utf-8")).hexdigest()
 
+            # Skip already processed samples
+            if doc_hash in data_dict:
+                continue
+
             # Load SHAP explanation (raw)
             shap_pkl_path = shap_dir / f"shap_{doc_hash}.pkl"
             if not shap_pkl_path.exists():
-                print(f"Warning: SHAP file not found for doc_hash {doc_hash}")
+                tqdm.write(f"Warning: SHAP file not found for doc_hash {doc_hash}")
                 continue
             shap_explanation = self.load_explanation_from_pkl(shap_pkl_path)
             shap_formatted = self.process_single_explanation(shap_explanation, 'shap', threshold=threshold_shap)
@@ -620,7 +607,7 @@ class ExplanationProcessor:
             # Load SHAP random explanation
             shap_random_pkl_path = shap_random_dir / f"shap_random_{doc_hash}.pkl"
             if not shap_random_pkl_path.exists():
-                print(f"Warning: SHAP random file not found for doc_hash {doc_hash}")
+                tqdm.write(f"Warning: SHAP random file not found for doc_hash {doc_hash}")
                 shap_random_formatted = {}
             else:
                 shap_random_explanation = self.load_explanation_from_pkl(shap_random_pkl_path)
@@ -634,7 +621,7 @@ class ExplanationProcessor:
                     lime_explanation = self.load_explanation_from_pkl(lime_pkl_path)
                     lime_formatted = self.process_single_explanation(lime_explanation, 'lime', threshold=threshold_lime)
                 else:
-                    print(f"Warning: LIME file not found for doc_hash {doc_hash}")
+                    tqdm.write(f"Warning: LIME file not found for doc_hash {doc_hash}")
             
             # Load Attention explanation (if available) 
             attention_formatted = {}
@@ -644,7 +631,7 @@ class ExplanationProcessor:
                     attention_explanation = self.load_explanation_from_pkl(attention_pkl_path)
                     attention_formatted = self.process_single_explanation(attention_explanation, 'attention', threshold=threshold_attention)
                 else:
-                    print(f"Warning: Attention file not found for doc_hash {doc_hash}")
+                    tqdm.write(f"Warning: Attention file not found for doc_hash {doc_hash}")
             
             # Build the data structure
             data_dict[doc_hash] = {
@@ -655,13 +642,12 @@ class ExplanationProcessor:
                 "lime": lime_formatted,
                 "attention": attention_formatted 
             }
+            
+            # Save incrementally after each sample
+            with open(output_json, "w", encoding="utf-8") as f:
+                json.dump(data_dict, f, indent=4, ensure_ascii=False)
         
-        # Save to JSON
-        with open(output_json, "w", encoding="utf-8") as f:
-            json.dump(data_dict, f, indent=4, ensure_ascii=False)
-        
-        print(f"Saved {len(data_dict)} samples to {output_json}")
-
+        tqdm.write(f"Saved {len(data_dict)} samples to {output_json}")
 
 
 def merge_json_files_from_folder(folder_path: Union[str, Path]) -> Dict[str, dict]:
