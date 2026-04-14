@@ -58,7 +58,7 @@ def main():
     chain_of_thought_folder = 'chain_of_thought_True' if args.chain_of_thought else 'no_chain_of_thought'
     pred_order_folder = args.pred_order
 
-    dir_results = f'{main_folder}/temperature_0.1/{model_folder}/{explanation_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
+    dir_results = f'{main_folder}/{model_folder}/{explanation_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
     os.makedirs(dir_results, exist_ok=True)
 
     # end = args.start + args.data_size

@@ -4,7 +4,7 @@ from helper_analysis import McNemarAnalyzer, quick_analyze, AggregatedAnalyzer
 
 def main():
 
-    analysis_main_folder = 'analysis/temperature_0.1'
+    analysis_main_folder = 'analysis'
 
     # CoT = ['chain_of_thought_True', 'no_chain_of_thought']
     llm = ['prometheus', 'qwen', 'llama']
@@ -33,14 +33,14 @@ def main():
 
     analyzer = McNemarAnalyzer(base_path="analysis")
 
-    analyzer.analyze_and_save_all(output_dir="tables/temperature_0.1/per_model")
-    analyzer.analyze_and_save_all_aggregated(output_dir="tables/temperature_0.1/per_model_aggregated")
-    analyzer.analyze_and_save_all_conservative(output_dir="tables/temperature_0.1/per_model_conservative")
+    analyzer.analyze_and_save_all(output_dir="tables/per_model")
+    analyzer.analyze_and_save_all_aggregated(output_dir="tables/per_model_aggregated")
+    analyzer.analyze_and_save_all_conservative(output_dir="tables/per_model_conservative")
 
     aggregated_analyzer = AggregatedAnalyzer(analyzer)
 
-    aggregated_analyzer.analyze_and_save_all(output_dir="tables/temperature_0.1/cross_model")
-    aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/temperature_0.1/cross_model_conservative")
+    aggregated_analyzer.analyze_and_save_all(output_dir="tables/cross_model")
+    aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/cross_model_conservative")
 
 
 if __name__ == '__main__':
