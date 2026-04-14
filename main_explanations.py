@@ -181,10 +181,10 @@ def main():
             samples=subset_texts,
             labels=subset_labels,
             output_json=file_explanations_def,
-            threshold_shap=0.010000,
-            threshold_lime=0.015433,
-            threshold_attention=0.004307,
-            threshold_random=0.001
+            top_n_shap=20,
+            top_n_random=20,
+            top_n_lime=20,
+            top_n_attention=20,
         )
 
 

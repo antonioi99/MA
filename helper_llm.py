@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import torch
 import os
 import re
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 
 def load_env_file(filepath='.env'):
@@ -541,11 +541,12 @@ class LLMInference:
         
         # Generate
         with torch.no_grad():
+            set_seed(42)
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_tokens,
                 temperature=temp,
-                do_sample=temp > 0,
+                do_sample=True,
                 pad_token_id=self.tokenizer.eos_token_id,
                 top_p=0.9 if temp > 0 else None,
             )

@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, set_seed
 from datasets import load_dataset
 import torch
 from torch.utils.data import DataLoader
@@ -53,6 +53,7 @@ def main():
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Predicting"):
+            set_seed(42)
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             
