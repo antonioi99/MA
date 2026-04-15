@@ -2,7 +2,8 @@
 
 #SBATCH --job-name="ma_innocenti"
 #SBATCH --array=0-161
-#SBATCH --container-image="ghcr.io#loris3/antonio:latest"
+# #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
+#SBATCH --container-image=/srv/home/users/a12225670cs/MA/loris3+antonio+latest.sqsh
 #SBATCH --container-mount-home 
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=8
