@@ -8,7 +8,6 @@
 #SBATCH --time=0-20:00:00
 #SBATCH --container-workdir=/srv/home/users/a12225670cs/MA
 
-#!/bin/bash
 
 for f in slurm-*.out; do
     [[ -e "$f" ]] || continue
