@@ -11,9 +11,9 @@
 for f in slurm-*.out; do
     [[ -e "$f" ]] || continue
 
-    if grep -q "total instances: 9966" "$f"; then
+    if grep -q "Total instances: 9966" "$f"; then
         echo "Would delete: $f"
-        # rm "$f"
+        rm "$f"
     fi
 done
 
