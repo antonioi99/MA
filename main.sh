@@ -30,4 +30,4 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_explanations.py --type merge
+python main_analysis.py

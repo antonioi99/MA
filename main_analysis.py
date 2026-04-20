@@ -16,7 +16,7 @@ def main():
                            "natural_words", "part_of_speech"]
 
     for model, explanation, prompt, order, exp_format  in product(llm, explanation_type, prompter, pred_order, explanation_formats):
-        subdirectory = f"temperature_0.1/{model}/{explanation}/{prompt}/no_chain_of_thought/{order}"
+        subdirectory = f"{model}/{explanation}/{prompt}/no_chain_of_thought/{order}"
         os.makedirs(f"{analysis_main_folder}/{subdirectory}", exist_ok=True)
 
         try:

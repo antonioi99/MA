@@ -5,16 +5,19 @@
 # #SBATCH --container-image="ghcr.io#loris3/antonio:latest"
 #SBATCH --container-image=/srv/home/users/a12225670cs/MA/loris3+antonio+latest.sqsh
 #SBATCH --container-mount-home 
-#SBATCH --mem=64GB
-#SBATCH --cpus-per-task=8
+#SBATCH --mem=40GB
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-# #SBATCH --exclude=dgx1
-#SBATCH --time=0-20:00:00
+#SBATCH --exclude=dgx1
+# #SBATCH --nodelist=dgx1
+#SBATCH --time=0-10:00:00
 #SBATCH --container-workdir=/srv/home/users/a12225670cs/MA
 #SBATCH --nodes=1
-#SBATCH --partition=p_low
+# #SBATCH --partition=p_low
 #SBATCH --container-writable
 #SBATCH --requeue
+
+#SBATCH --begin=now+9hours
 
 
 export $(grep -v '^#' .env | xargs)
