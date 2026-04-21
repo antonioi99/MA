@@ -293,6 +293,28 @@ class McNemarAnalyzer:
         
         return self.results_cache[cache_key]
     
+
+    def _one_tailed_p(self, two_tailed_p: float, got_better: float, got_worse: float) -> float:
+        """
+        Convert a two-tailed McNemar p-value to a one-tailed p-value.
+        
+        One-tailed test: H1 is that the explanation format improves accuracy
+        (got_better > got_worse). If the change is negative, the one-tailed
+        p-value is set to 1.0 since we are only testing for improvement.
+        
+        Args:
+            two_tailed_p: Two-tailed p-value from McNemar's test
+            got_better: Number of instances where format correct, baseline incorrect (c)
+            got_worse: Number of instances where baseline correct, format incorrect (b)
+        
+        Returns:
+            One-tailed p-value
+        """
+        if got_better > got_worse:
+            return two_tailed_p / 2
+        else:
+            return 1 - two_tailed_p / 2
+
     def get_correctness_arrays(self, config: ExperimentConfig, format_name: str) -> np.ndarray:
         """
         FIXED: Extract correctness array (True/False for each test example)
@@ -409,6 +431,13 @@ class McNemarAnalyzer:
         # Perform McNemar's test
         # Use chi-square approximation for large samples
         mcnemar_result = mcnemar(table, exact=False, correction=True)
+
+        # One-tailed p-value
+        p_value = self._one_tailed_p(
+            mcnemar_result.pvalue,
+            got_better=baseline_wrong_test_correct,
+            got_worse=baseline_correct_test_wrong
+        )
         
         # Calculate change metrics
         absolute_change = accuracy_test - accuracy_baseline
@@ -427,8 +456,8 @@ class McNemarAnalyzer:
             'got_better': baseline_wrong_test_correct,
             'both_wrong': both_wrong,
             'mcnemar_statistic': mcnemar_result.statistic,
-            'p_value': mcnemar_result.pvalue,
-            'significant': mcnemar_result.pvalue < 0.05
+            'p_value': p_value,
+            'significant': p_value < 0.05
         }
     
     def analyze_configuration(self, config: ExperimentConfig) -> pd.DataFrame:
@@ -730,6 +759,13 @@ class McNemarAnalyzer:
         
         # Perform McNemar's test on averaged table
         mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
+
+        # One-tailed p-value
+        p_value = self._one_tailed_p(
+            mcnemar_result.pvalue,
+            got_better=got_better,
+            got_worse=got_worse
+        )
         
         # Calculate accuracies from averaged table
         n_total = averaged_table.sum()
@@ -758,8 +794,8 @@ class McNemarAnalyzer:
             'got_better': got_better,
             'both_wrong': both_wrong,
             'mcnemar_statistic': mcnemar_result.statistic,
-            'p_value': mcnemar_result.pvalue,
-            'significant': mcnemar_result.pvalue < 0.05
+            'p_value': p_value,
+            'significant': p_value < 0.05
         }
 
     def analyze_configuration_aggregated(self, llm: str, task_type: str, cot: str, explanation_type: str) -> pd.DataFrame:
@@ -959,6 +995,11 @@ class McNemarAnalyzer:
         table = contingency_table.table
 
         mcnemar_result = mcnemar(table, exact=False, correction=True)
+        p_value = self._one_tailed_p(
+            mcnemar_result.pvalue,
+            got_better=got_better,
+            got_worse=got_worse
+        )
 
         marginal_row_prob, marginal_col_prob = contingency_table.marginal_probabilities
         accuracy_baseline = marginal_row_prob[True]
@@ -984,8 +1025,8 @@ class McNemarAnalyzer:
             'got_better': table[0, 1],
             'both_wrong': table[0, 0],
             'mcnemar_statistic': mcnemar_result.statistic,
-            'p_value': mcnemar_result.pvalue,
-            'significant': mcnemar_result.pvalue < 0.05
+            'p_value': p_value,
+            'significant': p_value < 0.05
         }
 
 
@@ -1184,8 +1225,6 @@ class AggregatedAnalyzer:
         stacked = np.stack(all_tables, axis=0)
         averaged_table = stacked.mean(axis=0)
         
-        # Perform McNemar's test on averaged table
-        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
         
         # Calculate accuracies from averaged table
         n_total = averaged_table.sum()
@@ -1193,6 +1232,14 @@ class AggregatedAnalyzer:
         got_better = averaged_table[0, 1]
         got_worse = averaged_table[1, 0]
         both_correct = averaged_table[1, 1]
+
+        # Perform McNemar's test on averaged table
+        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
+        p_value = self.analyzer._one_tailed_p(
+            mcnemar_result.pvalue,
+            got_better=got_better,
+            got_worse=got_worse
+        )
         
         accuracy_baseline = (got_worse + both_correct) / n_total
         accuracy_test = (got_better + both_correct) / n_total
@@ -1215,8 +1262,8 @@ class AggregatedAnalyzer:
             'got_better': got_better,
             'both_wrong': both_wrong,
             'mcnemar_statistic': mcnemar_result.statistic,
-            'p_value': mcnemar_result.pvalue,
-            'significant': mcnemar_result.pvalue < 0.05
+            'p_value': p_value,
+            'significant': p_value < 0.05
         }
     
     def analyze_verbalization_formats(self, 
@@ -1357,13 +1404,19 @@ class AggregatedAnalyzer:
         stacked = np.stack(all_tables, axis=0)
         averaged_table = stacked.mean(axis=0)
 
-        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
 
         n_total = averaged_table.sum()
         both_wrong = averaged_table[0, 0]
         got_better = averaged_table[0, 1]
         got_worse = averaged_table[1, 0]
         both_correct = averaged_table[1, 1]
+
+        mcnemar_result = mcnemar(averaged_table, exact=False, correction=True)
+        p_value = self.analyzer._one_tailed_p(
+            mcnemar_result.pvalue,
+            got_better=got_better,
+            got_worse=got_worse
+        )
 
         accuracy_baseline = (got_worse + both_correct) / n_total
         accuracy_test = (got_better + both_correct) / n_total
@@ -1387,8 +1440,8 @@ class AggregatedAnalyzer:
             'got_better': got_better,
             'both_wrong': both_wrong,
             'mcnemar_statistic': mcnemar_result.statistic,
-            'p_value': mcnemar_result.pvalue,
-            'significant': mcnemar_result.pvalue < 0.05
+            'p_value': p_value,
+            'significant': p_value < 0.05
         }
 
 

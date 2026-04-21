@@ -17,7 +17,7 @@
 #SBATCH --container-writable
 #SBATCH --requeue
 
-#SBATCH --begin=now+9hours
+# #SBATCH --begin=now+9hours
 
 
 export $(grep -v '^#' .env | xargs)
