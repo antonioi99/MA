@@ -882,14 +882,6 @@ def compute_agreement_from_raw(
 #     plt.close()
 
 def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_results.png'):
-    """
-    Paired dot plot showing baseline accuracy and accuracy-with-explanation
-    connected by a line for each verbalization format.
-    Rows: verbalization formats
-    Columns: models
-    Color: explanation method
-    Line color: green if improvement, red if decrease
-    """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     models = ['Llama', 'Qwen', 'M-Prometheus']
@@ -906,7 +898,7 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         'Natural Words', 'Part Of Speech'
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 6), sharey=True, sharex=False)
+    fig, axes = plt.subplots(1, 3, figsize=(14, 6), sharey=True, sharex=True)
 
     for col_idx, model in enumerate(models):
         ax = axes[col_idx]
@@ -920,49 +912,45 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
 
             color = explanation_colors[row['explanation']]
             y = y_positions[row['format']]
-
-            # Small jitter per explanation method to avoid overlap
             jitter = {'SHAP': -0.2, 'LIME': 0.0, 'Attention': 0.2}[row['explanation']]
             y_jittered = y + jitter
+            improved = row['accuracy'] > row['baseline']
 
-            # Line connecting baseline to accuracy
-            line_color = '#2ecc71' if row['accuracy'] > row['baseline'] else '#e74c3c'
-            line_style = '-' if row['significant'] else '--'
-
+            # Connecting line
             ax.plot(
                 [row['baseline'], row['accuracy']],
                 [y_jittered, y_jittered],
-                color=line_color,
-                linewidth=1.5,
-                linestyle=line_style,
-                alpha=0.7,
-                zorder=2
+                color=color,
+                linewidth=1.4,
+                alpha=0.6,
             )
 
-            # Baseline dot (hollow)
+            # Baseline: filled dot
             ax.scatter(
                 row['baseline'], y_jittered,
+                marker='o',
                 color=color,
-                facecolors='white',
-                edgecolors=color,
-                s=60,
-                linewidths=1.5,
-                zorder=3
+                s=30,
             )
 
-            # Accuracy dot (filled)
+            # Explanation end: hollow > or 
+            end_marker = '>' if improved else '<'
             ax.scatter(
                 row['accuracy'], y_jittered,
-                color=color,
-                facecolors=color,
-                s=60,
-                zorder=3
+                marker=end_marker,
+                facecolors='white',
+                edgecolors=color,
+                s=30,
+                linewidths=1,
             )
 
         ax.set_yticks(range(len(row_order)))
-        ax.set_yticklabels(row_order if col_idx == 0 else [], fontsize=9)
+        ax.set_yticklabels(row_order) #if col_idx == 0 else [], fontsize=9)
         ax.set_title(model, fontsize=12, fontweight='bold')
         ax.set_xlabel('Accuracy (%)', fontsize=9)
+        ax.set_xlim(87, 95)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+        ax.tick_params(axis='x', labelsize=8, rotation=45)
         ax.grid(axis='x', alpha=0.3)
         ax.yaxis.grid(True, linestyle=':', alpha=0.3)
         ax.set_axisbelow(True)
@@ -972,42 +960,199 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         mpatches.Patch(color=c, label=exp)
         for exp, c in explanation_colors.items()
     ]
-    line_legend = [
-        plt.Line2D([0], [0], color='#2ecc71', linewidth=1.5, label='Improvement'),
-        plt.Line2D([0], [0], color='#e74c3c', linewidth=1.5, label='Decrease'),
-        plt.Line2D([0], [0], color='gray', linewidth=1.5,
-                   linestyle='-', label='Significant ($p < 0.05$)'),
-        plt.Line2D([0], [0], color='gray', linewidth=1.5,
-                   linestyle='--', label='Not significant'),
-    ]
-    dot_legend = [
-        plt.scatter([], [], facecolors='white', edgecolors='gray',
-                    s=60, linewidths=1.5, label='Baseline accuracy'),
-        plt.scatter([], [], facecolors='gray', edgecolors='gray',
-                    s=60, label='Accuracy with explanation'),
+    marker_legend = [
+        plt.scatter([], [], marker='o', color='gray', s=50,
+                    label='Baseline accuracy'),
+        plt.scatter([], [], marker='>', facecolors='white', edgecolors='gray',
+                    s=80, linewidths=1.5,
+                    label='With explanation ($>$ improve, $<$ decrease)'),
     ]
 
     all_handles = (
-        [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
+        #[mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
         exp_legend +
-        [mpatches.Patch(color='none', label=r'$\bf{Direction}$')] +
-        line_legend +
-        [mpatches.Patch(color='none', label=r'$\bf{Dots}$')] +
-        dot_legend
+        #[mpatches.Patch(color='none', label=r'$\bf{Markers}$')] +
+        marker_legend
     )
 
     fig.legend(
         handles=all_handles,
         loc='lower center',
-        ncol=5,
-        fontsize=8,
-        bbox_to_anchor=(0.5, -0.08),
+        ncol=len(all_handles),
+        fontsize=9,
+        bbox_to_anchor=(0.5, -0.05),
         frameon=True
     )
 
     fig.suptitle(
         'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-        '(hollow = baseline, filled = with explanation, line style = significance)',
+        r'(filled dot = baseline, hollow $>$/$<$ = with explanation)',
+        fontsize=12, fontweight='bold'
+    )
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"Saved paired dot plot to: {output_file}")
+    plt.close()
+
+
+def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_dot_results_single.png'):
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    models = ['Llama', 'Qwen', 'M-Prometheus']
+    explanations = ['SHAP', 'LIME', 'Attention']
+
+    explanation_colors = {
+        'SHAP': '#2196F3',
+        'LIME': '#FF9800',
+        'Attention': '#9C27B0'
+    }
+    explanation_offsets = {
+        'SHAP': -0.2,
+        'LIME': 0.0,
+        'Attention': 0.2
+    }
+
+    row_order = [
+        'Text Scores', 'Text Labels',
+        'Structured Text Scores', 'Structured Text Labels',
+        'Top Words Scores', 'Top Words Labels',
+        'Natural Words', 'Part Of Speech'
+    ]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    y_positions = {fmt: i for i, fmt in enumerate(row_order)}
+
+    for _, row in df.iterrows():
+        if row['format'] not in y_positions:
+            continue
+
+        color = explanation_colors[row['explanation']]
+        y = y_positions[row['format']]
+        y_jittered = y + explanation_offsets[row['explanation']]
+        improved = row['accuracy'] > row['baseline']
+
+        # Connecting line
+        ax.plot(
+            [row['baseline'], row['accuracy']],
+            [y_jittered, y_jittered],
+            color=color,
+            linewidth=1.6,
+            alpha=0.6,
+        )
+
+        # Baseline: filled dot
+        ax.scatter(
+            row['baseline'], y_jittered,
+            marker='o',
+            color=color,
+            s=25,
+            zorder=3
+        )
+
+
+        # Explanation end: hollow > or 
+        end_marker = '>' if improved else '<'
+        ax.scatter(
+            row['accuracy'], y_jittered,
+            marker=end_marker,
+            facecolors='white',
+            edgecolors=color,
+            s=25,
+            linewidths=1.5,
+            zorder=3
+        )
+
+        # Asterisk for significant results
+        if row['significant']:
+            x_offset = 0.05 if improved else -0.05
+            ax.text(
+                row['accuracy'] + x_offset, y_jittered,
+                '*',
+                color=color,
+                fontsize=13,
+                ha='left' if improved else 'right',
+                va='center',
+                zorder=4
+            )
+
+    # Extend y-axis to make room at the top
+    ax.set_ylim(-0.5, len(row_order) - 0.5 + 1)  # extra space at top
+
+    # Write model names once, above the first row
+    for model in models:
+        model_data = df[df['model'] == model]
+        if model_data.empty:
+            continue
+        x_baseline = model_data['baseline'].mean()
+        ax.text(
+            x_baseline, len(row_order) - 0.5 + 0.6,
+            model,
+            fontsize=12,
+            ha='center',
+            va='center',
+            color='#444444',
+            style='italic',
+            fontweight='bold',
+            transform=ax.transData
+        )
+
+    # Subtle separator line between the labels and the first row
+    ax.axhline(
+        y=len(row_order) - 0.5 + 0.3,
+        color='gray',
+        linewidth=0.5,
+        linestyle=':',
+        alpha=0.5
+    )
+
+    ax.set_yticks(range(len(row_order)))
+    ax.set_yticklabels(row_order, fontsize=9)
+    ax.set_xlabel('Accuracy (%)', fontsize=10)
+    ax.set_xlim(87, 95)
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+    ax.tick_params(axis='x', labelsize=8, rotation=45)
+    ax.grid(axis='x', alpha=0.3)
+    ax.yaxis.grid(True, linestyle=':', alpha=0.3)
+    ax.set_axisbelow(True)
+
+
+    # Legend — single row at the bottom
+    exp_legend = [
+        mpatches.Patch(color=c, label=exp)
+        for exp, c in explanation_colors.items()
+    ]
+    marker_legend = [
+        plt.scatter([], [], marker='o', color='gray', s=40,
+                    label='Baseline accuracy'),
+        plt.scatter([], [], marker='>', facecolors='white', edgecolors='gray',
+                    s=40, linewidths=1,
+                    label='With explanation ($>$ improve, $<$ decrease)'),
+        plt.Line2D([0], [0], color='none', label='* = significant ($p < 0.05$)')
+    ]
+
+    all_handles = (
+        # [mpatches.Patch(color='none', label=r'$\bf{Explanation:}$')] +
+        exp_legend +
+        # [mpatches.Patch(color='none', label=r'$\bf{Markers:}$')] +
+        marker_legend
+    )
+
+    fig.legend(
+        handles=all_handles,
+        loc='lower center',
+        ncol=len(all_handles),
+        fontsize=8,
+        #bbox_to_anchor=(0.5, -0.04),
+        frameon=True,
+        handlelength=1.5,
+        columnspacing=0.8
+    )
+
+    ax.set_title(
+        'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
+        r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
         fontsize=12, fontweight='bold'
     )
 
