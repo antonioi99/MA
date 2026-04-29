@@ -1,1 +1,0 @@
-scatter_accuracy --> pearson, testen ob korrelation significant is, dot-fuellung weglassen
