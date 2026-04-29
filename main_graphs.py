@@ -17,8 +17,8 @@ def main():
     # print("\nGenerating facet dot plot...")
     # helper_graphs.plot_facet_bar(df, output_file='figures/facet_bar_results.png')
 
-    # print("\nGenerating accuracy vs change scatter...")
-    # helper_graphs.plot_accuracy_vs_change(df, output_file='figures/scatter_accuracy_vs_change.png')
+    print("\nGenerating accuracy vs change scatter...")
+    helper_graphs.plot_accuracy_vs_change(df, output_file='figures/scatter_accuracy_vs_change.png')
 
 
     # print("\nGenerating label order comparison scatter...")
@@ -27,14 +27,12 @@ def main():
     # print("\n Generating agreement table...")
     # helper_graphs.compute_agreement_from_raw()
 
-    # print("\nGenerating beeswarm plot...")
-    # helper_graphs.plot_beeswarm(df)
 
-    print("\nGenerating paired dot plot...")
-    helper_graphs.plot_paired_dot(df)
+    # print("\nGenerating paired dot plot...")
+    # helper_graphs.plot_paired_dot(df)
 
-    print("\nGenerating paired dot plot single...")
-    helper_graphs.plot_paired_dot_single(df)
+    # print("\nGenerating paired dot plot single...")
+    # helper_graphs.plot_paired_dot_single(df)
 
 
     print("\nDone!")

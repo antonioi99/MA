@@ -159,7 +159,7 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
     )
     ax.set_xlabel('Model --- Explanation Method', fontsize=11)
     ax.set_ylabel('Verbalization Format', fontsize=11)
-    ax.tick_params(axis='x', labelsize=9)
+    ax.tick_params(axis='x', labelsize=9, rotation=45)
     ax.tick_params(axis='y', labelsize=9)
 
     # Add vertical lines to separate models
@@ -772,114 +772,6 @@ def compute_agreement_from_raw(
 
     return df, df_agg
 
-# def plot_beeswarm(df: pd.DataFrame, output_file: str = 'figures/beeswarm_results.png'):
-#     """
-#     Beeswarm / strip plot showing distribution of relative changes.
-#     Rows: verbalization formats
-#     Columns: models
-#     Each dot: one explanation method (SHAP, LIME, Attention)
-#     Color: explanation method
-#     Filled: significant, empty: not significant
-#     """
-#     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-#     models = ['Llama', 'Qwen', 'M-Prometheus']
-#     explanations = ['SHAP', 'LIME', 'Attention']
-
-#     row_order = [
-#         'Text Scores', 'Text Labels',
-#         'Structured Text Scores', 'Structured Text Labels',
-#         'Top Words Scores', 'Top Words Labels',
-#         'Natural Words', 'Part Of Speech'
-#     ]
-
-#     explanation_colors = {
-#         'SHAP': '#2196F3',
-#         'LIME': '#FF9800',
-#         'Attention': '#9C27B0'
-#     }
-
-#     fig, axes = plt.subplots(1, 3, figsize=(14, 6), sharey=True, sharex=False)
-
-#     x_min = df['relative_change'].min() - 0.5
-#     x_max = df['relative_change'].max() + 0.5
-
-#     for col_idx, model in enumerate(models):
-#         ax = axes[col_idx]
-#         subset = df[df['model'] == model].copy()
-
-#         # Map format to y position directly without set_index
-#         y_positions = {fmt: i for i, fmt in enumerate(row_order)}
-
-#         for _, row in subset.iterrows():
-#             if pd.isna(row['relative_change']) or row['format'] not in y_positions:
-#                 continue
-
-#             color = explanation_colors[row['explanation']]
-#             y = y_positions[row['format']]
-#             jitter = np.random.uniform(-0.15, 0.15)
-
-#             ax.scatter(
-#                 row['relative_change'],
-#                 y + jitter,
-#                 color=color,
-#                 facecolors=color if row['significant'] else 'white',
-#                 edgecolors=color,
-#                 s=70,
-#                 linewidths=1.5,
-#                 alpha=0.85,
-#                 zorder=3
-#             )
-
-
-#         ax.axvline(x=0, color='black', linewidth=1, linestyle='--', alpha=0.5)
-#         ax.set_xlim(x_min, x_max)
-#         ax.set_yticks(range(len(row_order)))
-#         ax.set_yticklabels(row_order if col_idx == 0 else [], fontsize=9)
-#         ax.set_title(model, fontsize=12, fontweight='bold')
-#         ax.set_xlabel('Relative Change (%)', fontsize=9)
-#         ax.grid(axis='x', alpha=0.3)
-#         ax.yaxis.grid(True, linestyle=':', alpha=0.3)
-#         ax.set_axisbelow(True)
-
-#     # Legend
-#     exp_legend = [
-#         mpatches.Patch(color=c, label=exp)
-#         for exp, c in explanation_colors.items()
-#     ]
-#     sig_legend = [
-#         plt.scatter([], [], facecolors='gray', edgecolors='gray',
-#                     s=70, label='Significant ($p < 0.05$)'),
-#         plt.scatter([], [], facecolors='white', edgecolors='gray',
-#                     s=70, linewidths=1.5, label='Not significant'),
-#     ]
-
-#     all_handles = (
-#         [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
-#         exp_legend +
-#         [mpatches.Patch(color='none', label=r'$\bf{Significance}$')] +
-#         sig_legend
-#     )
-
-#     fig.legend(
-#         handles=all_handles,
-#         loc='lower center',
-#         ncol=6,
-#         fontsize=9,
-#         bbox_to_anchor=(0.5, -0.05),
-#         frameon=True
-#     )
-
-#     fig.suptitle(
-#         'Distribution of Relative Change by Model and Verbalization Format\n'
-#         '(each dot = one explanation method, filled = significant $p < 0.05$)',
-#         fontsize=12, fontweight='bold'
-#     )
-
-#     plt.tight_layout()
-#     plt.savefig(output_file, dpi=300, bbox_inches='tight')
-#     print(f"Saved beeswarm plot to: {output_file}")
-#     plt.close()
 
 def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_results.png'):
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -898,7 +790,7 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         'Natural Words', 'Part Of Speech'
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 6), sharey=True, sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharey=True, sharex=True)  # ← taller figure
 
     for col_idx, model in enumerate(models):
         ax = axes[col_idx]
@@ -916,38 +808,39 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
             y_jittered = y + jitter
             improved = row['accuracy'] > row['baseline']
 
-            # Connecting line
             ax.plot(
                 [row['baseline'], row['accuracy']],
                 [y_jittered, y_jittered],
-                color=color,
-                linewidth=1.4,
-                alpha=0.6,
+                color=color, linewidth=1.4, alpha=0.6,
             )
-
-            # Baseline: filled dot
-            ax.scatter(
-                row['baseline'], y_jittered,
-                marker='o',
-                color=color,
-                s=30,
-            )
-
-            # Explanation end: hollow > or 
+            ax.scatter(row['baseline'], y_jittered, marker='o', color=color, s=30)
             end_marker = '>' if improved else '<'
             ax.scatter(
                 row['accuracy'], y_jittered,
-                marker=end_marker,
-                facecolors='white',
-                edgecolors=color,
-                s=30,
-                linewidths=1,
+                marker=end_marker, facecolors='white',
+                edgecolors=color, s=30, linewidths=1,
             )
+            if row['significant']:
+                x_offset = 0.05 if improved else -0.05
+                ax.text(
+                    row['accuracy'] + x_offset, y_jittered, '*',
+                    color=color, fontsize=13,
+                    ha='left' if improved else 'right',
+                    va='center', zorder=4
+                )
 
         ax.set_yticks(range(len(row_order)))
-        ax.set_yticklabels(row_order) #if col_idx == 0 else [], fontsize=9)
-        ax.set_title(model, fontsize=12, fontweight='bold')
-        ax.set_xlabel('Accuracy (%)', fontsize=9)
+        ax.set_yticklabels(row_order, fontsize=9)
+
+        # ← Model name as a bold y-axis label on the left
+        ax.set_ylabel(model, fontsize=13, fontweight='bold', rotation=90,
+                      labelpad=12, va='center')
+
+
+        if col_idx == len(models) - 1:
+            ax.set_xlabel('Accuracy (%)', fontsize=9)
+        else:
+            ax.set_xlabel('')
         ax.set_xlim(87, 95)
         ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
         ax.tick_params(axis='x', labelsize=8, rotation=45)
@@ -961,32 +854,25 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         for exp, c in explanation_colors.items()
     ]
     marker_legend = [
-        plt.scatter([], [], marker='o', color='gray', s=50,
-                    label='Baseline accuracy'),
+        plt.scatter([], [], marker='o', color='gray', s=50, label='Baseline accuracy'),
         plt.scatter([], [], marker='>', facecolors='white', edgecolors='gray',
-                    s=80, linewidths=1.5,
-                    label='With explanation ($>$ improve, $<$ decrease)'),
+                    s=80, linewidths=1.5, label='With explanation'),
+        plt.Line2D([0], [0], color='none', label='* = significant ($p < 0.05$)')
     ]
-
-    all_handles = (
-        #[mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
-        exp_legend +
-        #[mpatches.Patch(color='none', label=r'$\bf{Markers}$')] +
-        marker_legend
-    )
+    all_handles = exp_legend + marker_legend
 
     fig.legend(
         handles=all_handles,
-        loc='lower center',
-        ncol=len(all_handles),
+        # loc='upper right',
+        ncol=1,
         fontsize=9,
-        bbox_to_anchor=(0.5, -0.05),
+        bbox_to_anchor=(0.96, 0.92),
         frameon=True
     )
 
     fig.suptitle(
         'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-        r'(filled dot = baseline, hollow $>$/$<$ = with explanation)',
+        r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
         fontsize=12, fontweight='bold'
     )
 
@@ -1128,7 +1014,7 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
                     label='Baseline accuracy'),
         plt.scatter([], [], marker='>', facecolors='white', edgecolors='gray',
                     s=40, linewidths=1,
-                    label='With explanation ($>$ improve, $<$ decrease)'),
+                    label='With explanation'),
         plt.Line2D([0], [0], color='none', label='* = significant ($p < 0.05$)')
     ]
 
@@ -1144,7 +1030,7 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
         loc='lower center',
         ncol=len(all_handles),
         fontsize=8,
-        #bbox_to_anchor=(0.5, -0.04),
+        bbox_to_anchor=(0.5, -0.04),
         frameon=True,
         handlelength=1.5,
         columnspacing=0.8
