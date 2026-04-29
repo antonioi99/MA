@@ -10,6 +10,7 @@ from sklearn.metrics import cohen_kappa_score
 import json
 import glob
 import krippendorff
+from scipy import stats
 
 
 def collect_aggregated_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
@@ -326,18 +327,55 @@ def collect_per_order_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def plot_accuracy_vs_change(df: pd.DataFrame, 
+def correlation_analysis(df: pd.DataFrame):
+    x = df['relative_change']
+    y = df['baseline']
+
+    # Normality checks
+    _, p_norm_x = stats.shapiro(x)
+    _, p_norm_y = stats.shapiro(y)
+
+    print("=== Normality (Shapiro-Wilk) ===")
+    print(f"  relative_change: p = {p_norm_x:.4f} {'✓ normal' if p_norm_x > 0.05 else '✗ not normal'}")
+    print(f"  baseline:        p = {p_norm_y:.4f} {'✓ normal' if p_norm_y > 0.05 else '✗ not normal'}")
+
+    both_normal = p_norm_x > 0.05 and p_norm_y > 0.05
+
+    # Pearson
+    r_pearson, p_pearson = stats.pearsonr(x, y)
+    # Spearman
+    r_spearman, p_spearman = stats.spearmanr(x, y)
+
+    print("\n=== Correlation Results ===")
+    print(f"  Pearson  r = {r_pearson:.4f},  p = {p_pearson:.4f} {'*' if p_pearson < 0.05 else ''}")
+    print(f"  Spearman ρ = {r_spearman:.4f},  p = {p_spearman:.4f} {'*' if p_spearman < 0.05 else ''}")
+
+    print("\n=== Recommendation ===")
+    if both_normal:
+        print("  Both variables are normal → Pearson is appropriate.")
+        print(f"  → r = {r_pearson:.4f}, p = {p_pearson:.4f}")
+    else:
+        print("  At least one variable is non-normal → use Spearman.")
+        print(f"  → ρ = {r_spearman:.4f}, p = {p_spearman:.4f}")
+
+    return {
+        'shapiro_x': p_norm_x,
+        'shapiro_y': p_norm_y,
+        'pearson_r': r_pearson,
+        'pearson_p': p_pearson,
+        'spearman_r': r_spearman,
+        'spearman_p': p_spearman,
+    }
+
+
+
+def plot_accuracy_vs_change(df: pd.DataFrame,
                              output_file: str = 'figures/scatter_accuracy_vs_change.png'):
-    """
-    Scatter plot: baseline accuracy (x) vs relative change (y).
-    One point per model-explanation-format combination.
-    Shows whether higher baseline accuracy correlates with smaller improvements.
-    """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     model_markers = {
         'Llama': 'o',
-        'Qwen': 's',
+        'Qwen': '*',
         'M-Prometheus': '^'
     }
     explanation_colors = {
@@ -346,61 +384,51 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
         'Attention': '#9C27B0'
     }
 
-    fig, ax = plt.subplots(figsize=(10, 7))
+    # --- Run correlation analysis first ---
+    corr_results = correlation_analysis(df)
+    both_normal = corr_results['shapiro_x'] > 0.05 and corr_results['shapiro_y'] > 0.05
+    if both_normal:
+        corr_label = f"Pearson $r = {corr_results['pearson_r']:.3f}$, $p = {corr_results['pearson_p']:.3f}$"
+    else:
+        corr_label = f"Spearman $\\rho = {corr_results['spearman_r']:.3f}$, $p = {corr_results['spearman_p']:.3f}$"
+
+    fig, ax = plt.subplots(figsize=(12, 5))
 
     for model, marker in model_markers.items():
         for exp, color in explanation_colors.items():
             subset = df[(df['model'] == model) & (df['explanation'] == exp)]
-
-            # Significant points --- filled
-            sig = subset[subset['significant']]
             ax.scatter(
-                sig['relative_change'],
-                sig['baseline'],
+                subset['relative_change'],
+                subset['baseline'],
                 marker=marker,
                 color=color,
-                s=80,
-                alpha=0.85,
-                zorder=3,
-                label=f'{model} — {exp}' if len(sig) > 0 else None
-            )
-
-            # Non-significant points --- empty
-            nonsig = subset[~subset['significant']]
-            ax.scatter(
-                nonsig['relative_change'],
-                nonsig['baseline'],
-                marker=marker,
-                facecolors='none',
-                edgecolors=color,
-                s=80,
+                s=200,
                 alpha=0.6,
-                linewidths=1.5,
-                zorder=3
+                zorder=3,
             )
 
     ax.axvline(x=0, color='black', linewidth=1, linestyle='--', alpha=0.5)
-    ax.axhline(y=df['baseline'].mean(), color='gray', linewidth=1,
-               linestyle=':', alpha=0.5, label='Mean baseline')
+
+    ax.set_xlim(-3.5, 3.5)
+    ax.set_ylim(88, 95)
 
     ax.set_xlabel('Relative Change in Accuracy (%)', fontsize=11)
     ax.set_ylabel('Baseline Accuracy (%)', fontsize=11)
     ax.set_title(
-        'Baseline Accuracy vs Relative Change\n'
-        '(filled = significant $p < 0.05$, empty = not significant)',
+        'Baseline Accuracy vs Relative Change',
         fontsize=12
     )
 
-    # Trend line
+    # Trend line — dashed to signal non-significant correlation
     z = np.polyfit(df['relative_change'], df['baseline'], 1)
-    p = np.poly1d(z)
+    p_fit = np.poly1d(z)
     x_line = np.linspace(df['relative_change'].min(), df['relative_change'].max(), 200)
-    correlation = np.corrcoef(df['relative_change'], df['baseline'])[0, 1]
-    r_squared = correlation ** 2
-    ax.plot(x_line, p(x_line), color='black', linewidth=1.5, linestyle='-', alpha=0.6,
-            label=f'Trend line ($R^2={r_squared:.2f}$)')
+    r_squared = np.corrcoef(df['relative_change'], df['baseline'])[0, 1] ** 2
+    # ax.plot(x_line, p_fit(x_line), color='black', linewidth=1.5, linestyle='--', alpha=0.5,
+    #         label='Trend line (n.s.)')
 
-    # Custom legend for models and explanation methods
+
+    # Legend
     model_legend = [
         plt.scatter([], [], marker=m, color='gray', s=80, label=mod)
         for mod, m in model_markers.items()
@@ -410,22 +438,21 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
         for exp, c in explanation_colors.items()
     ]
 
-
     all_handles = (
-        [mpatches.Patch(color='none', label=r'$\bf{Model}$')] +
-        model_legend +
-        [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
-        exp_legend +
-        [plt.Line2D([0], [0], color='black', linewidth=1.5, linestyle='-', alpha=0.6, label=f'Trend line ($R^2={r_squared:.2f}$)')]  # added
-    )
-    ax.legend(
-        handles=all_handles,
-        loc='upper right',
-        fontsize=9,
-        frameon=True,
-        handlelength=1.5,
-        borderpad=0.8
-    )
+            [mpatches.Patch(color='none', label=r'$\bf{Model}$')] +
+            model_legend +
+            [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
+            exp_legend +
+            [
+                mpatches.Patch(color='none', label=r'$\bf{Correlation}$'),
+                # plt.Line2D([0], [0], color='black', linewidth=1.5, linestyle='--',
+                #     alpha=0.5, label='Trend line (n.s.)'), 
+                mpatches.Patch(color='none', label=f"Spearman $\\rho = {corr_results['spearman_r']:.3f}$, $p = {corr_results['spearman_p']:.3f}$ (n.s.)"),
+                mpatches.Patch(color='none', label=f"Pearson $r = {corr_results['pearson_r']:.3f}$, $p = {corr_results['pearson_p']:.3f}$*"),
+            ]
+        )
+    ax.legend(handles=all_handles, loc='upper right', fontsize=9,
+              frameon=True, handlelength=1.5, borderpad=0.8)
 
     ax.grid(alpha=0.3)
     plt.tight_layout()
@@ -594,7 +621,7 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
 def compute_agreement_from_raw(
     base_path: str = 'test_results',
     output_file: str = 'tables/agreement/agreement_raw.tex'
-):
+    ):
     """
     For each model x verbalization format combination, load per-item classifications
     for pos_neg and neg_pos orderings, align them by test_id, discard missing/hallucinated
