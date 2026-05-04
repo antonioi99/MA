@@ -6,7 +6,7 @@
 #SBATCH --container-mount-home 
 #SBATCH --mem=40G
 #SBATCH --cpus-per-task=8
-# #SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:1
 # #SBATCH --nodelist=dgx1
 # #SBATCH --exclude=dgx1
 #SBATCH --time=0-20:00:00
@@ -30,4 +30,4 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_graphs.py
+python main_explanations.py --type visualization_example --subset_size 1 --start 5000
