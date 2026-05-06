@@ -446,7 +446,7 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
                 # plt.Line2D([0], [0], color='black', linewidth=1.5, linestyle='--',
                 #     alpha=0.5, label='Trend line (n.s.)'), 
                 mpatches.Patch(color='none', label=f"Spearman $\\rho = {corr_results['spearman_r']:.3f}$, $p = {corr_results['spearman_p']:.3f}$ (n.s.)"),
-                mpatches.Patch(color='none', label=f"Pearson $r = {corr_results['pearson_r']:.3f}$, $p = {corr_results['pearson_p']:.3f}$*"),
+                # mpatches.Patch(color='none', label=f"Pearson $r = {corr_results['pearson_r']:.3f}$, $p = {corr_results['pearson_p']:.3f}$*"),
             ]
         )
     ax.legend(handles=all_handles, loc='upper right', fontsize=9,
