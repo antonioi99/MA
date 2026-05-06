@@ -24,9 +24,6 @@ def main():
     print("\nGenerating label order comparison scatter...")
     helper_graphs.plot_label_order_comparison(df_order, output_file='figures/scatter_label_order.png')
 
-    print("\n Generating agreement table...")
-    helper_graphs.compute_agreement_from_raw()
-
 
     print("\nGenerating paired dot plot...")
     helper_graphs.plot_paired_dot(df)
