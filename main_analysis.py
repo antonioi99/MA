@@ -1,6 +1,6 @@
 from itertools import product
 import os
-from helper_analysis import McNemarAnalyzer, quick_analyze, AggregatedAnalyzer
+from helper_analysis import McNemarAnalyzer, quick_analyze, AggregatedAnalyzer, compute_agreement_from_raw
 
 def main():
 
@@ -42,6 +42,9 @@ def main():
     aggregated_analyzer.analyze_and_save_all(output_dir="tables/cross_model")
     aggregated_analyzer.analyze_and_save_all_conservative(output_dir="tables/cross_model_conservative")
 
+
+    print("\n Generating agreement table...")
+    compute_agreement_from_raw()
 
 if __name__ == '__main__':
     main()

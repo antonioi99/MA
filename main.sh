@@ -30,4 +30,4 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_explanations.py --type visualization_example --subset_size 1 --start 5000
+python main_analysis.py

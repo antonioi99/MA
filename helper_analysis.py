@@ -5,6 +5,8 @@ import numpy as np
 import os
 from statsmodels.stats.contingency_tables import mcnemar, SquareTable
 from dataclasses import dataclass
+import glob
+import krippendorff
 
 
 class PredictionAnalyzer:
@@ -994,6 +996,12 @@ class McNemarAnalyzer:
         contingency_table = SquareTable.from_data(contingency_data)
         table = contingency_table.table
 
+
+        both_correct = table[1, 1]
+        got_worse = table[1, 0]
+        got_better = table[0, 1]
+        both_wrong = table[0, 0]
+
         mcnemar_result = mcnemar(table, exact=False, correction=True)
         p_value = self._one_tailed_p(
             mcnemar_result.pvalue,
@@ -1020,10 +1028,10 @@ class McNemarAnalyzer:
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
             'relative_change': relative_change,
-            'both_correct': table[1, 1],
-            'got_worse': table[1, 0],
-            'got_better': table[0, 1],
-            'both_wrong': table[0, 0],
+            'both_correct': both_correct,
+            'got_worse': got_worse,
+            'got_better': got_better,
+            'both_wrong': both_wrong,
             'mcnemar_statistic': mcnemar_result.statistic,
             'p_value': p_value,
             'significant': p_value < 0.05
@@ -1635,3 +1643,186 @@ class AggregatedAnalyzer:
             print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant']]
                   .to_string())
         
+
+
+
+def compute_agreement_from_raw(
+    base_path: str = 'test_results',
+    output_file: str = 'tables/agreement/agreement_raw.tex'
+    ):
+    """
+    For each model x verbalization format combination, load per-item classifications
+    for pos_neg and neg_pos orderings, align them by test_id, discard missing/hallucinated
+    responses, then compute Krippendorff's alpha (nominal).
+    """
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    model_configs = [
+        ('llama',      'single'),
+        ('qwen',       'single'),
+        ('prometheus', 'pairwise')
+    ]
+    explanation_types = ['shap', 'lime', 'attention']
+    cot = 'no_chain_of_thought'
+
+    format_files = [
+        'baseline',
+        'text_scores', 'text_labels',
+        'structured_text_scores', 'structured_text_labels',
+        'top_words_scores', 'top_words_labels',
+        'natural_words', 'part_of_speech'
+    ]
+    format_display = {f: f.replace('_', ' ').title() for f in format_files}
+
+    model_display = {
+        'llama': 'Llama',
+        'qwen': 'Qwen',
+        'prometheus': 'M-Prometheus'
+    }
+
+    VALID_LABELS = {0, 1}
+
+    def load_classifications(path: str) -> dict:
+        """Load a json file and return {test_id: predicted_label}.
+        Discards items with missing or invalid labels."""
+        with open(path, 'r') as f:
+            data = json.load(f)
+        result = {}
+        for item in data:
+            label = item.get('predicted_label_LLM')
+            if label in VALID_LABELS:
+                result[item['test_id']] = label
+        return result
+
+    rows = []
+
+    for llm, task_type in model_configs:
+        for exp in explanation_types:
+            for fmt in format_files:
+                path_pos_neg = f'{base_path}/{llm}/{exp}/{task_type}/{cot}/pos_neg/{fmt}.json'
+                path_neg_pos = f'{base_path}/{llm}/{exp}/{task_type}/{cot}/neg_pos/{fmt}.json'
+
+                if not os.path.exists(path_pos_neg) or not os.path.exists(path_neg_pos):
+                    print(f"Missing files for {llm}-{exp}-{fmt}, skipping.")
+                    continue
+
+                labels_pos_neg = load_classifications(path_pos_neg)
+                labels_neg_pos = load_classifications(path_neg_pos)
+
+                # Align by test_id — keep only items present and valid in both
+                common_ids = set(labels_pos_neg.keys()) & set(labels_neg_pos.keys())
+                n_total = max(len(labels_pos_neg), len(labels_neg_pos))
+                n_discarded = n_total - len(common_ids)
+
+                if len(common_ids) < 2:
+                    print(f"Not enough aligned items for {llm}-{exp}-{fmt}, skipping.")
+                    continue
+
+                vec_pos_neg = np.array([labels_pos_neg[i] for i in common_ids])
+                vec_neg_pos = np.array([labels_neg_pos[i] for i in common_ids])
+
+                # Krippendorff's alpha (nominal)
+                reliability_data = np.array([vec_pos_neg, vec_neg_pos])
+                alpha = krippendorff.alpha(
+                    reliability_data,
+                    level_of_measurement='nominal'
+                )
+
+                rows.append({
+                    'model': model_display[llm],
+                    'explanation': exp.upper(),
+                    'format': format_display[fmt],
+                    'alpha': alpha,
+                    'n_aligned': len(common_ids),
+                    'n_discarded': n_discarded
+                })
+
+    df = pd.DataFrame(rows)
+
+    # --- Aggregate across explanation types (mean per model x format) ---
+    df_agg = df.groupby(['model', 'format']).agg(
+        alpha=('alpha', 'mean'),
+        n_aligned=('n_aligned', 'sum'),
+        n_discarded=('n_discarded', 'sum')
+    ).reset_index()
+
+    # --- Build LaTeX table ---
+    models = ['Llama', 'Qwen', 'M-Prometheus']
+    row_order = [format_display[f] for f in format_files]
+
+    col_spec = 'l' + 'r' * len(models)
+
+    header = ' & '.join(
+        [r'\textbf{Format}'] +
+        [rf'\textbf{{{m}}}' for m in models]
+    ) + r' \\'
+
+    subheader = ' & '.join(
+        [''] + [r'$\alpha_{K}$' for _ in models]
+    ) + r' \\'
+
+    lines = [
+        r'\begin{table}[ht]',
+        r'\centering',
+        r'\small',
+        rf'\begin{{tabular}}{{{col_spec}}}',
+        r'\toprule',
+        header,
+        subheader,
+        r'\midrule',
+    ]
+
+    for fmt in row_order:
+        # Add a visual separator before baseline vs the rest
+        if fmt == format_display['baseline']:
+            pass  # baseline is first, no separator needed
+        cells = [fmt]
+        for model in models:
+            match = df_agg[(df_agg['model'] == model) & (df_agg['format'] == fmt)]
+            if match.empty:
+                cells += ['---']
+            else:
+                alpha = match['alpha'].values[0]
+                cells += [f'{alpha:.3f}']
+        lines.append(' & '.join(cells) + r' \\')
+
+        # Add a midrule after baseline to visually separate it
+        if fmt == format_display['baseline']:
+            lines.append(r'\midrule')
+
+    # Overall row
+    lines.append(r'\midrule')
+    overall_cells = [r'\textit{Overall}']
+    for model in models:
+        model_rows = df_agg[df_agg['model'] == model]
+        mean_alpha = model_rows['alpha'].mean()
+        overall_cells += [rf'\textit{{{mean_alpha:.3f}}}']
+    lines.append(' & '.join(overall_cells) + r' \\')
+
+    # Compute totals for caption
+    total_discarded = df['n_discarded'].sum()
+    total_items = df['n_aligned'].sum() + total_discarded
+    pct_discarded = total_discarded / total_items * 100
+
+    lines += [
+        r'\bottomrule',
+        r'\end{tabular}',
+        rf'\caption{{Per-item agreement between positive-first and negative-first label orderings, '
+        rf"measured by Krippendorff's $\alpha$ (nominal), averaged across explanation methods "
+        rf'(SHAP, LIME, Attention). A total of {total_discarded} items '
+        rf'({pct_discarded:.1f}\% of all classifications) were discarded due to missing '
+        rf'or hallucinated responses. A horizontal rule separates the baseline (no explanation) '
+        rf'from verbalization formats.}}',
+        r'\label{tab:agreement_raw}',
+        r'\end{table}',
+    ]
+
+    latex = '\n'.join(lines)
+    with open(output_file, 'w') as f:
+        f.write(latex)
+
+    print(f"Saved LaTeX table to: {output_file}")
+    df['pct_discarded'] = df['n_discarded'] / (df['n_aligned'] + df['n_discarded']) * 100
+    print(f"Mean discard rate per configuration: {df['pct_discarded'].mean():.2f}%")
+
+    return df, df_agg
