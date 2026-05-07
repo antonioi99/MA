@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Prometheus - SHAP - No CoT - neg pos}
-\label{tab:prometheus-shap-pairwise-no_chain_of_thought-neg_pos}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 92.18 & 92.33 & +0.15 & 0.2604 \\
-Text Labels & 92.19 & 92.28 & +0.08 & 0.3635 \\
-Structured Text Scores & 92.18 & 92.45 & +0.28 & 0.0998 \\
-Structured Text Labels & 92.18 & 92.73 & \textbf{+0.55} & \textbf{0.0034} \\
-Top Words Scores & 92.17 & 93.25 & \textbf{+1.08} & \textbf{0.0000} \\
-Top Words Labels & 92.17 & 92.45 & +0.28 & 0.0938 \\
-Natural Words & 92.17 & 92.65 & \textbf{+0.47} & \textbf{0.0050} \\
-Part Of Speech & 92.17 & 92.61 & \textbf{+0.44} & \textbf{0.0071} \\
+Baseline & 92.17 & -- & -- \\
+\midrule
+t_s & 92.33 & +0.15 & 0.2604 \\
+t_l & 92.28 & +0.08 & 0.3635 \\
+s_t_l & 92.45 & +0.28 & 0.0998 \\
+s_t_s. & 92.73 & \textbf{+0.55} & \textbf{0.0034} \\
+t_w_s & 93.25 & \textbf{+1.08} & \textbf{0.0000} \\
+t_w_s & 92.45 & +0.28 & 0.0938 \\
+n_w & 92.65 & \textbf{+0.47} & \textbf{0.0050} \\
+p_o_s & 92.61 & \textbf{+0.44} & \textbf{0.0071} \\
 \bottomrule
 \end{tabular}
-\end{table}

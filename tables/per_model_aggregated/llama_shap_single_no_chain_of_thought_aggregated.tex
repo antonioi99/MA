@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Llama - SHAP - No CoT - aggregated}
-\label{tab:llama-shap-single-no_chain_of_thought-aggregated}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 88.64 & 87.16 & -1.48 & 1.0000 \\
-Text Labels & 88.64 & 89.63 & \textbf{+0.99} & \textbf{0.0004} \\
-Structured Text Scores & 88.64 & 87.83 & -0.81 & 0.9963 \\
-Structured Text Labels & 88.64 & 87.79 & -0.85 & 0.9976 \\
-Top Words Scores & 88.64 & 88.79 & +0.15 & 0.3191 \\
-Top Words Labels & 88.64 & 91.21 & \textbf{+2.57} & \textbf{0.0000} \\
-Natural Words & 88.64 & 89.04 & +0.40 & 0.0779 \\
-Part Of Speech & 88.64 & 88.92 & +0.28 & 0.1667 \\
+Baseline & 88.64 & -- & -- \\
+\midrule
+t_s & 87.16 & -1.48 & 1.0000 \\
+t_l & 89.63 & \textbf{+0.99} & \textbf{0.0004} \\
+s_t_l & 87.83 & -0.81 & 0.9963 \\
+s_t_s. & 87.79 & -0.85 & 0.9976 \\
+t_w_s & 88.79 & +0.15 & 0.3191 \\
+t_w_s & 91.21 & \textbf{+2.57} & \textbf{0.0000} \\
+n_w & 89.04 & +0.40 & 0.0779 \\
+p_o_s & 88.92 & +0.28 & 0.1667 \\
 \bottomrule
 \end{tabular}
-\end{table}

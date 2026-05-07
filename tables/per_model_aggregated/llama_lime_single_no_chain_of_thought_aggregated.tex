@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Llama - LIME - No CoT - aggregated}
-\label{tab:llama-lime-single-no_chain_of_thought-aggregated}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 88.64 & 87.65 & -0.99 & 0.9994 \\
-Text Labels & 88.64 & 90.01 & \textbf{+1.36} & \textbf{0.0000} \\
-Structured Text Scores & 88.64 & 87.93 & -0.71 & 0.9915 \\
-Structured Text Labels & 88.64 & 88.38 & -0.26 & 0.8087 \\
-Top Words Scores & 88.64 & 89.97 & \textbf{+1.33} & \textbf{0.0000} \\
-Top Words Labels & 88.64 & 91.55 & \textbf{+2.91} & \textbf{0.0000} \\
-Natural Words & 88.64 & 88.81 & +0.17 & 0.2845 \\
-Part Of Speech & 88.64 & 88.68 & +0.04 & 0.4564 \\
+Baseline & 88.64 & -- & -- \\
+\midrule
+t_s & 87.65 & -0.99 & 0.9994 \\
+t_l & 90.01 & \textbf{+1.36} & \textbf{0.0000} \\
+s_t_l & 87.93 & -0.71 & 0.9915 \\
+s_t_s. & 88.38 & -0.26 & 0.8087 \\
+t_w_s & 89.97 & \textbf{+1.33} & \textbf{0.0000} \\
+t_w_s & 91.55 & \textbf{+2.91} & \textbf{0.0000} \\
+n_w & 88.81 & +0.17 & 0.2845 \\
+p_o_s & 88.68 & +0.04 & 0.4564 \\
 \bottomrule
 \end{tabular}
-\end{table}

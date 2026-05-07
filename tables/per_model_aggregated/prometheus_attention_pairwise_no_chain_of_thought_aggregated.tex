@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Prometheus - Attention - No CoT - aggregated}
-\label{tab:prometheus-attention-pairwise-no_chain_of_thought-aggregated}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 92.65 & 92.51 & -0.14 & 0.7229 \\
-Text Labels & 92.57 & 92.70 & +0.13 & 0.2791 \\
-Structured Text Scores & 92.56 & 91.89 & -0.67 & 0.9984 \\
-Structured Text Labels & 92.56 & 91.08 & -1.48 & 1.0000 \\
-Top Words Scores & 92.56 & 92.63 & +0.07 & 0.3860 \\
-Top Words Labels & 92.56 & 92.08 & -0.48 & 0.9869 \\
-Natural Words & 92.55 & 92.10 & -0.45 & 0.9866 \\
-Part Of Speech & 92.56 & 92.18 & -0.38 & 0.9705 \\
+Baseline & 92.56 & -- & -- \\
+\midrule
+t_s & 92.51 & -0.14 & 0.7229 \\
+t_l & 92.70 & +0.13 & 0.2791 \\
+s_t_l & 91.89 & -0.67 & 0.9984 \\
+s_t_s. & 91.08 & -1.48 & 1.0000 \\
+t_w_s & 92.63 & +0.07 & 0.3860 \\
+t_w_s & 92.08 & -0.48 & 0.9869 \\
+n_w & 92.10 & -0.45 & 0.9866 \\
+p_o_s & 92.18 & -0.38 & 0.9705 \\
 \bottomrule
 \end{tabular}
-\end{table}

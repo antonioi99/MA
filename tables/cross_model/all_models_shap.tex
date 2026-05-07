@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{Aggregated McNemar's Test across all judge models --- Shap explanations}
-\label{tab:aggregated-shap-all-models}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 91.82 & 91.24 & -0.58 & 0.9914 \\
-Text Labels & 91.82 & 91.96 & +0.14 & 0.2923 \\
-Structured Text Scores & 91.81 & 91.32 & -0.49 & 0.9794 \\
-Structured Text Labels & 91.82 & 91.35 & -0.47 & 0.9743 \\
-Top Words Scores & 91.81 & 92.01 & +0.20 & 0.2081 \\
-Top Words Labels & 91.81 & 92.45 & \textbf{+0.64} & \textbf{0.0035} \\
-Natural Words & 91.81 & 91.76 & -0.05 & 0.5793 \\
-Part Of Speech & 91.81 & 91.77 & -0.04 & 0.5618 \\
+Baseline & 91.82 & -- & -- \\
+\midrule
+t_s & 91.24 & -0.58 & 0.9914 \\
+t_l & 91.96 & +0.14 & 0.2923 \\
+s_t_l & 91.32 & -0.49 & 0.9794 \\
+s_t_s. & 91.35 & -0.47 & 0.9743 \\
+t_w_s & 92.01 & +0.20 & 0.2081 \\
+t_w_s & 92.45 & \textbf{+0.64} & \textbf{0.0035} \\
+n_w & 91.76 & -0.05 & 0.5793 \\
+p_o_s & 91.77 & -0.04 & 0.5618 \\
 \bottomrule
 \end{tabular}
-\end{table}

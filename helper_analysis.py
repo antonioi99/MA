@@ -270,6 +270,16 @@ class McNemarAnalyzer:
         "top_words_scores", "top_words_labels", 
         "natural_words", "part_of_speech"
     ]
+    FORMAT_ABBREVIATIONS = {
+        'Text Scores': 't_s',
+        'Text Labels': 't_l',
+        'Structured Text Scores': 's_t_l',
+        'Structured Text Labels': 's_t_s.',
+        'Top Words Scores': 't_w_s',
+        'Top Words Labels': 't_w_s',
+        'Natural Words': 'n_w',
+        'Part Of Speech': 'p_o_s'
+        }
     
     def __init__(self, base_path: str = "analysis"):
         self.base_path = base_path
@@ -540,16 +550,18 @@ class McNemarAnalyzer:
 
     def to_latex(self, df: pd.DataFrame, config: ExperimentConfig) -> str:
         """
-        Convert DataFrame to LaTeX table format - simplified version
-        Only shows: Format name, Baseline accuracy, Test accuracy, Change, p-value
+        Convert DataFrame to compact LaTeX tabular only (no table environment).
+        For use inside minipage environments for side-by-side layout.
+        Shows baseline as first row, then verbalization formats with accuracy,
+        absolute change and p-value. No separate baseline column.
         """
-        # Format the values manually
-        def format_value(val, is_change=False, is_pvalue=False, is_significant=False, is_positive=False):
+        def format_value(val, is_change=False, is_pvalue=False,
+                        is_significant=False, is_positive=False):
             if pd.isna(val):
                 return '--'
             if is_pvalue:
                 formatted = f'{val:.4f}'
-                if is_significant and is_positive:  # added is_positive check here
+                if is_significant and is_positive:
                     formatted = f'\\textbf{{{formatted}}}'
                 return formatted
             elif is_change:
@@ -560,112 +572,56 @@ class McNemarAnalyzer:
                 return formatted
             else:
                 return f'{val*100:.2f}'
-        
-        # Generate caption
-        caption = (f"McNemar's Test: {config.llm.title()} - "
-                f"{config.explanation.upper() if config.explanation in ['lime', 'shap'] else config.explanation.title()} - "
-                f"{'CoT' if 'True' in config.cot else 'No CoT'} - "
-                f"{config.prompting.replace('_', ' ')}")
-        
-        # Start building LaTeX table with only 5 columns
+
         latex_lines = []
-        latex_lines.append(r'\begin{table}[htbp]')
-        latex_lines.append(r'\centering')
-        latex_lines.append(r'\small')
-        latex_lines.append(f'\\caption{{{caption}}}')
-        latex_lines.append(f'\\label{{{config.to_label()}}}')
-        latex_lines.append(r'\begin{tabular}{lrrrr}')  # Only 5 columns now
+        latex_lines.append(r'\begin{tabular}{lrrr}')  # 4 columns: format, acc, delta, p
         latex_lines.append(r'\toprule')
-        
-        # Simplified header - use \% directly in raw string
-        header = r'Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\'
-        latex_lines.append(header)
+        latex_lines.append(r'Format & Acc & $\Delta$\% & $p$ \\')
         latex_lines.append(r'\midrule')
-        
-        # First row - baseline
-        # first_row = df.iloc[0]
-        # latex_lines.append(f'Baseline & {format_value(first_row["baseline"])} & -- & -- & -- \\\\')
-        
+
+        # Baseline row
+        baseline_row = df.iloc[0]
+        baseline_acc = baseline_row['baseline']
+        latex_lines.append(
+            f'Baseline & {format_value(baseline_acc)} & -- & -- \\\\'
+        )
+        latex_lines.append(r'\midrule')
+
+        # Verbalization format rows
         for idx, row in df.iloc[1:].iterrows():
             test_acc = row[idx]
-            format_name = idx.replace("_", " ").title()
-            
+            format_name = self.FORMAT_ABBREVIATIONS.get(idx.replace("_", " ").title(), idx.replace("_", " ").title())
+
             is_significant = row["p"] < 0.05 if not pd.isna(row["p"]) else False
             is_positive = row["change"] > 0 if not pd.isna(row["change"]) else False
-            
+
             line = (f'{format_name} & '
-                    f'{format_value(row["baseline"])} & '
                     f'{format_value(test_acc)} & '
                     f'{format_value(row["change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
                     f'{format_value(row["p"], is_pvalue=True, is_significant=is_significant, is_positive=is_positive)} \\\\')
             latex_lines.append(line)
-        
-        # End table
+
         latex_lines.append(r'\bottomrule')
         latex_lines.append(r'\end{tabular}')
-        latex_lines.append(r'\end{table}')
-        
-        latex_str = '\n'.join(latex_lines)
-        
-        # DON'T do the replace here anymore since we're handling % correctly
-        return latex_str
 
-    def save_latex_table(self, df: pd.DataFrame, config: ExperimentConfig, 
-                        output_file: Optional[str] = None):
+        return '\n'.join(latex_lines)
+
+
+    def save_latex_table(self, df: pd.DataFrame, config: ExperimentConfig,
+                                output_file: Optional[str] = None):
         """
-        Save a single table to LaTeX file
-        
-        Args:
-            df: Results DataFrame
-            config: Experiment configuration
-            output_file: Output file path (optional)
+        Save a compact tabular-only LaTeX file for use in minipage environments.
         """
         latex_str = self.to_latex(df, config)
-        
+
         if output_file is None:
             output_file = f"{config}.tex"
-        
+
         with open(output_file, 'w', encoding='UTF-8') as f:
             f.write(latex_str)
-        
-        print(f"Saved LaTeX table to: {output_file}")
-        
-    
-    
-    def analyze_and_save_all(self, output_dir: str = "tables"):
-        """
-        Analyze all configurations and save both individual and combined LaTeX files
-        
-        Args:
-            output_dir: Directory to save output files
-        """
-        print(f"\n{'='*80}")
-        os.makedirs(output_dir, exist_ok=True)
-        
-        all_configs = self.get_all_configurations()
-        successful_analyses = 0
-        
-        for config in all_configs:
-            try:
-                # Analyze configuration
-                results_df = self.analyze_configuration(config)
-                
-                # Save individual LaTeX file
-                individual_file = os.path.join(output_dir, f"{config}.tex")
-                self.save_latex_table(results_df, config, individual_file)
-                
-                successful_analyses += 1
-                
-            except FileNotFoundError as e:
-                print(f"Skipping {config}: {e}")
-            except Exception as e:
-                print(f"Error processing {config}: {e}")
-        
-        
-        print(f"\n{'='*80}")
-        print(f"Analysis complete!")
-        print(f"Successfully analyzed: {successful_analyses}/{len(all_configs)} configurations")
-        print(f"Output directory: {output_dir}")
+
+        print(f"Saved compact LaTeX table to: {output_file}")
+
     
     def get_all_configurations(self) -> List[ExperimentConfig]:
         """
@@ -863,62 +819,6 @@ class McNemarAnalyzer:
         
         return df
 
-    def analyze_and_save_all_aggregated(self, output_dir: str = "tables"):
-        """
-        Analyze all configurations with aggregated prompting strategies and save LaTeX files
-        
-        Args:
-            output_dir: Directory to save output files
-        """
-        os.makedirs(output_dir, exist_ok=True)
-        
-        llms = ['llama', 'qwen', 'prometheus']
-        task_types = ['single', 'pairwise']
-        cots = ['no_chain_of_thought', 'chain_of_thought_True']
-        explanation_types = ['attention', 'lime', 'shap']
-        
-        successful_analyses = 0
-        
-        for llm in llms:
-            for task_type in task_types:
-                for cot in cots:
-                    for exp in explanation_types:
-                        try:
-                            # Analyze configuration with aggregated prompting
-                            results_df = self.analyze_configuration_aggregated(llm, task_type, cot, exp)
-                            
-                            # Create a pseudo-config for naming
-                            avg_config = ExperimentConfig(llm, task_type, cot, 'aggregated', exp)
-                            
-                            # Save individual LaTeX file
-                            individual_file = os.path.join(output_dir, f"{avg_config}.tex")
-                            self.save_latex_table(results_df, avg_config, individual_file)
-                            
-                            successful_analyses += 1
-                            
-                        except FileNotFoundError as e:
-                        # Only log for no_chain_of_thought; chain_of_thought configs are not used in this experiment
-                            if cot == 'no_chain_of_thought':
-                                if llm == 'prometheus':
-                                    if task_type == 'pairwise':
-                                        print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
-                                else:
-                                    if task_type == 'single':
-                                        print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
-                        except Exception as e:
-                            if cot == 'no_chain_of_thought':
-                                if llm == 'prometheus':
-                                    if task_type == 'pairwise':
-                                        print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
-                                else:
-                                    if task_type == 'single':
-                                        print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
-
-
-        print(f"\n{'='*80}")
-        print(f"Aggregated analysis complete!")
-        print(f"Successfully analyzed: {successful_analyses} configurations")
-        print(f"Output directory: {output_dir}")
 
     def compare_formats_conservative(self, llm: str, task_type: str, cot: str,
                                     baseline_format: str, test_format: str, 
@@ -1102,13 +1002,87 @@ class McNemarAnalyzer:
         df = pd.DataFrame(results, index=self.EXPLANATION_FORMATS)
         return df
 
-
-    def analyze_and_save_all_conservative(self, output_dir: str = "tables"):
+    def analyze_and_save_all(self, output_dir: str = "tables/per_model"):
         """
-        Analyze all configurations using the conservative approach and save LaTeX files.
+        Generate compact tabular-only LaTeX files for all per-model raw configurations.
+        Mirrors analyze_and_save_all but using to_latex.
+        """
+        print(f"\n{'='*80}")
+        os.makedirs(output_dir, exist_ok=True)
 
-        Args:
-            output_dir: Directory to save output files
+        all_configs = self.get_all_configurations()
+        successful_analyses = 0
+
+        for config in all_configs:
+            try:
+                results_df = self.analyze_configuration(config)
+                individual_file = os.path.join(output_dir, f"{config}.tex")
+                self.save_latex_table(results_df, config, individual_file)
+                successful_analyses += 1
+
+            except FileNotFoundError as e:
+                print(f"Skipping {config}: {e}")
+            except Exception as e:
+                print(f"Error processing {config}: {e}")
+
+        print(f"\n{'='*80}")
+        print(f"Compact analysis complete!")
+        print(f"Successfully analyzed: {successful_analyses}/{len(all_configs)} configurations")
+        print(f"Output directory: {output_dir}")
+
+
+    def analyze_and_save_all_aggregated(self, output_dir: str = "tables/per_model_aggregated"):
+        """
+        Generate compact tabular-only LaTeX files for all aggregated configurations.
+        Mirrors analyze_and_save_all_aggregated but using to_latex.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        llms = ['llama', 'qwen', 'prometheus']
+        task_types = ['single', 'pairwise']
+        cots = ['no_chain_of_thought', 'chain_of_thought_True']
+        explanation_types = ['attention', 'lime', 'shap']
+
+        successful_analyses = 0
+
+        for llm in llms:
+            for task_type in task_types:
+                for cot in cots:
+                    for exp in explanation_types:
+                        try:
+                            results_df = self.analyze_configuration_aggregated(
+                                llm, task_type, cot, exp
+                            )
+                            avg_config = ExperimentConfig(llm, task_type, cot, 'aggregated', exp)
+                            individual_file = os.path.join(
+                                output_dir, f"{avg_config}.tex"
+                            )
+                            self.save_latex_table(results_df, avg_config, individual_file)
+                            successful_analyses += 1
+
+                        except FileNotFoundError as e:
+                            if cot == 'no_chain_of_thought':
+                                if llm == 'prometheus' and task_type == 'pairwise':
+                                    print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                                elif llm != 'prometheus' and task_type == 'single':
+                                    print(f"Skipping {llm}-{exp}-{task_type}-{cot}: {e}")
+                        except Exception as e:
+                            if cot == 'no_chain_of_thought':
+                                if llm == 'prometheus' and task_type == 'pairwise':
+                                    print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+                                elif llm != 'prometheus' and task_type == 'single':
+                                    print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
+
+        print(f"\n{'='*80}")
+        print(f"Compact aggregated analysis complete!")
+        print(f"Successfully analyzed: {successful_analyses} configurations")
+        print(f"Output directory: {output_dir}")
+
+
+    def analyze_and_save_all_conservative(self, output_dir: str = "tables/per_model_conservative"):
+        """
+        Generate compact tabular-only LaTeX files for all conservative configurations.
+        Mirrors analyze_and_save_all_conservative but using to_latex.
         """
         os.makedirs(output_dir, exist_ok=True)
 
@@ -1127,16 +1101,15 @@ class McNemarAnalyzer:
                             results_df = self.analyze_configuration_conservative(
                                 llm, task_type, cot, exp
                             )
-
                             conservative_config = ExperimentConfig(
                                 llm, task_type, cot, 'conservative', exp
                             )
-
                             individual_file = os.path.join(
                                 output_dir, f"{conservative_config}.tex"
                             )
-                            self.save_latex_table(results_df, conservative_config, individual_file)
-
+                            self.save_latex_table(
+                                results_df, conservative_config, individual_file
+                            )
                             successful_analyses += 1
 
                         except FileNotFoundError as e:
@@ -1151,7 +1124,7 @@ class McNemarAnalyzer:
                                 print(f"Error processing {llm}-{exp}-{task_type}-{cot}: {e}")
 
         print(f"\n{'='*80}")
-        print(f"Conservative analysis complete!")
+        print(f"Compact conservative analysis complete!")
         print(f"Successfully analyzed: {successful_analyses} configurations")
         print(f"Output directory: {output_dir}")
 
@@ -1503,15 +1476,13 @@ class AggregatedAnalyzer:
         return results
 
 
-    def analyze_and_save_all_conservative(self, output_dir: str = "tables",
-                                        cot: str = 'no_chain_of_thought'):
+    def analyze_and_save_all_conservative(self, 
+                                                output_dir: str = "tables/cross_model_conservative",
+                                                cot: str = 'no_chain_of_thought'):
         """
-        Run the full conservative aggregated analysis for all explanation types
-        and save LaTeX tables.
-
-        Args:
-            output_dir: Directory to save output files
-            cot: Chain of thought setting
+        Generate compact tabular-only LaTeX files for all conservative cross-model
+        aggregated configurations.
+        Mirrors analyze_and_save_all_conservative but using to_latex.
         """
         os.makedirs(output_dir, exist_ok=True)
 
@@ -1519,32 +1490,27 @@ class AggregatedAnalyzer:
 
         for explanation_type, df in all_results.items():
             output_file = os.path.join(
-                output_dir, f"conservative_{explanation_type}_all_models.tex"
+                output_dir, f"conservative_all_models_{explanation_type}.tex"
             )
             self.save_latex_table(df, explanation_type, output_file, conservative=True)
 
-            print(f"\n{explanation_type.upper()} conservative results:")
-            print(df[['baseline', 'accuracy', 'absolute_change', 'p_value', 'significant',
-                    'n_discarded']].to_string())
+        print(f"\nCompact conservative cross-model analysis complete!")
+        print(f"Output directory: {output_dir}")
     
-    def to_latex(self, df: pd.DataFrame, explanation_type: str, 
-             conservative: bool = False) -> str:
+    def to_latex(self, df: pd.DataFrame, explanation_type: str,
+                        conservative: bool = False) -> str:
         """
-        Convert aggregated results DataFrame to LaTeX table.
-        
-        Args:
-            df: Results DataFrame from analyze_verbalization_formats
-            explanation_type: Explanation method name for caption
-        
-        Returns:
-            LaTeX table string
+        Convert aggregated results DataFrame to compact LaTeX tabular only.
+        Shows accuracy, absolute change and p-value. No separate baseline column.
+        Baseline is shown as first row.
         """
-        def format_value(val, is_change=False, is_pvalue=False, is_significant=False, is_positive=False):
+        def format_value(val, is_change=False, is_pvalue=False,
+                        is_significant=False, is_positive=False):
             if pd.isna(val):
                 return '--'
             if is_pvalue:
                 formatted = f'{val:.4f}'
-                if is_significant and is_positive:  # added is_positive check here
+                if is_significant and is_positive:
                     formatted = f'\\textbf{{{formatted}}}'
                 return formatted
             elif is_change:
@@ -1556,83 +1522,74 @@ class AggregatedAnalyzer:
             else:
                 return f'{val*100:.2f}'
 
-        if conservative:
-            caption = (f"Conservative Aggregated McNemar's Test across all judge models --- "
-                    f"{explanation_type.title()} explanations")
-            label = f"tab:conservative-aggregated-{explanation_type}-all-models"
-        else:
-            caption = (f"Aggregated McNemar's Test across all judge models --- "
-                    f"{explanation_type.title()} explanations")
-            label = f"tab:aggregated-{explanation_type}-all-models"
-        
         latex_lines = []
-        latex_lines.append(r'\begin{table}[htbp]')
-        latex_lines.append(r'\centering')
-        latex_lines.append(r'\small')
-        latex_lines.append(f'\\caption{{{caption}}}')
-        latex_lines.append(f'\\label{{{label}}}')
-        latex_lines.append(r'\begin{tabular}{lrrrr}')
+        latex_lines.append(r'\begin{tabular}{lrrr}')
         latex_lines.append(r'\toprule')
+        latex_lines.append(r'Format & Acc & $\Delta$\% & $p$ \\')
+        latex_lines.append(r'\midrule')
+
+        # Get baseline accuracy from first row
+        baseline_acc = df.iloc[0]['baseline']
         latex_lines.append(
-            r'Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\'
+            f'Baseline & {format_value(baseline_acc)} & -- & -- \\\\'
         )
         latex_lines.append(r'\midrule')
 
         for format_name, row in df.iterrows():
             is_significant = row["p_value"] < 0.05 if not pd.isna(row["p_value"]) else False
             is_positive = row["absolute_change"] > 0 if not pd.isna(row["absolute_change"]) else False
-            
-            line = (f'{format_name} & '
-                    f'{format_value(row["baseline"])} & '
+
+            # Apply abbreviation
+            abbreviated_name = self.analyzer.FORMAT_ABBREVIATIONS.get(
+                format_name, format_name
+            )
+
+            line = (f'{abbreviated_name} & '
                     f'{format_value(row["accuracy"])} & '
                     f'{format_value(row["absolute_change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
                     f'{format_value(row["p_value"], is_pvalue=True, is_significant=is_significant, is_positive=is_positive)} \\\\')
             latex_lines.append(line)
-        
-        
+
         latex_lines.append(r'\bottomrule')
         latex_lines.append(r'\end{tabular}')
-        latex_lines.append(r'\end{table}')
-        
+
         return '\n'.join(latex_lines)
-    
+
+
     def save_latex_table(self, df: pd.DataFrame, explanation_type: str,
-                        output_file: Optional[str] = None,
-                        conservative: bool = False):
+                                output_file: Optional[str] = None,
+                                conservative: bool = False):
+        """
+        Save a compact tabular-only LaTeX file for use in minipage environments.
+        """
         latex_str = self.to_latex(df, explanation_type, conservative=conservative)
-        
+
         if output_file is None:
-            output_file = f"all_models_{explanation_type}.tex"
-        
+            suffix = 'conservative_' if conservative else ''
+            output_file = f"{suffix}all_models_{explanation_type}.tex"
+
         with open(output_file, 'w', encoding='UTF-8') as f:
             f.write(latex_str)
-        
-        print(f"Saved aggregated LaTeX table to: {output_file}")
-    
-    def analyze_and_save_all(self, output_dir: str = "tables",
-                              cot: str = 'no_chain_of_thought'):
+
+        print(f"Saved compact aggregated LaTeX table to: {output_file}")
+
+    def analyze_and_save_all(self, output_dir: str = "tables/compact/cross_model", cot: str = 'no_chain_of_thought'):
         """
-        Run the full aggregated analysis for all explanation types and save
-        LaTeX tables.
-        
-        Args:
-            output_dir: Directory to save output files
-            cot: Chain of thought setting
+        Generate compact tabular-only LaTeX files for all cross-model aggregated
+        configurations (non-conservative only).
         """
         os.makedirs(output_dir, exist_ok=True)
-        
+
         all_results = self.analyze_all_explanation_types(cot=cot)
-        
+
         for explanation_type, df in all_results.items():
             output_file = os.path.join(
                 output_dir, f"all_models_{explanation_type}.tex"
             )
             self.save_latex_table(df, explanation_type, output_file, conservative=False)
-            
-            print(f"\n{explanation_type.upper()} results:")
-            print(df[['baseline', 'accuracy', 'absolute_change', 'p_value', 'significant']]
-                  .to_string())
-        
+
+        print(f"\nCompact cross-model analysis complete!")
+        print(f"Output directory: {output_dir}")     
 
 
 

@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Llama - Attention - No CoT - conservative}
-\label{tab:llama-attention-single-no_chain_of_thought-conservative}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 97.61 & 97.46 & -0.15 & 0.9729 \\
-Text Labels & 97.20 & 96.98 & -0.22 & 0.9889 \\
-Structured Text Scores & 97.48 & 97.36 & -0.12 & 0.9246 \\
-Structured Text Labels & 97.41 & 97.32 & -0.09 & 0.8380 \\
-Top Words Scores & 97.54 & 97.32 & -0.22 & 0.9948 \\
-Top Words Labels & 97.30 & 97.04 & -0.27 & 0.9989 \\
-Natural Words & 97.27 & 97.03 & -0.24 & 0.9964 \\
-Part Of Speech & 97.24 & 97.12 & -0.12 & 0.9058 \\
+Baseline & 88.65 & -- & -- \\
+\midrule
+t_s & 97.46 & -0.15 & 0.9729 \\
+t_l & 96.98 & -0.22 & 0.9889 \\
+s_t_l & 97.36 & -0.12 & 0.9246 \\
+s_t_s. & 97.32 & -0.09 & 0.8380 \\
+t_w_s & 97.32 & -0.22 & 0.9948 \\
+t_w_s & 97.04 & -0.27 & 0.9989 \\
+n_w & 97.03 & -0.24 & 0.9964 \\
+p_o_s & 97.12 & -0.12 & 0.9058 \\
 \bottomrule
 \end{tabular}
-\end{table}

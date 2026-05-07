@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Prometheus - SHAP - No CoT - pos neg}
-\label{tab:prometheus-shap-pairwise-no_chain_of_thought-pos_neg}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 93.09 & 92.86 & -0.23 & 0.8416 \\
-Text Labels & 93.06 & 92.65 & -0.41 & 0.9652 \\
-Structured Text Scores & 93.01 & 92.34 & -0.66 & 0.9982 \\
-Structured Text Labels & 93.04 & 92.10 & -0.94 & 1.0000 \\
-Top Words Scores & 92.98 & 92.99 & +0.01 & 0.5000 \\
-Top Words Labels & 92.99 & 92.01 & -0.98 & 1.0000 \\
-Natural Words & 92.99 & 91.81 & -1.18 & 1.0000 \\
-Part Of Speech & 92.99 & 91.99 & -1.00 & 1.0000 \\
+Baseline & 92.99 & -- & -- \\
+\midrule
+t_s & 92.86 & -0.23 & 0.8416 \\
+t_l & 92.65 & -0.41 & 0.9652 \\
+s_t_l & 92.34 & -0.66 & 0.9982 \\
+s_t_s. & 92.10 & -0.94 & 1.0000 \\
+t_w_s & 92.99 & +0.01 & 0.5000 \\
+t_w_s & 92.01 & -0.98 & 1.0000 \\
+n_w & 91.81 & -1.18 & 1.0000 \\
+p_o_s & 91.99 & -1.00 & 1.0000 \\
 \bottomrule
 \end{tabular}
-\end{table}

@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Qwen - SHAP - No CoT - conservative}
-\label{tab:qwen-shap-single-no_chain_of_thought-conservative}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 96.88 & 96.89 & +0.01 & 0.5000 \\
-Text Labels & 96.84 & 96.88 & +0.04 & 0.3493 \\
-Structured Text Scores & 96.97 & 96.78 & -0.18 & 0.9797 \\
-Structured Text Labels & 96.86 & 96.87 & +0.01 & 0.5000 \\
-Top Words Scores & 96.89 & 96.89 & 0.00 & 0.5613 \\
-Top Words Labels & 96.85 & 96.84 & -0.01 & 0.5000 \\
-Natural Words & 97.10 & 97.02 & -0.08 & 0.8674 \\
-Part Of Speech & 97.05 & 97.02 & -0.03 & 0.6323 \\
+Baseline & 94.22 & -- & -- \\
+\midrule
+t_s & 96.89 & +0.01 & 0.5000 \\
+t_l & 96.88 & +0.04 & 0.3493 \\
+s_t_l & 96.78 & -0.18 & 0.9797 \\
+s_t_s. & 96.87 & +0.01 & 0.5000 \\
+t_w_s & 96.89 & 0.00 & 0.5613 \\
+t_w_s & 96.84 & -0.01 & 0.5000 \\
+n_w & 97.02 & -0.08 & 0.8674 \\
+p_o_s & 97.02 & -0.03 & 0.6323 \\
 \bottomrule
 \end{tabular}
-\end{table}

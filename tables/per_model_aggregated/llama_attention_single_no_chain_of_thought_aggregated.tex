@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Llama - Attention - No CoT - aggregated}
-\label{tab:llama-attention-single-no_chain_of_thought-aggregated}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 88.65 & 87.33 & -1.31 & 1.0000 \\
-Text Labels & 88.65 & 88.27 & -0.38 & 0.8979 \\
-Structured Text Scores & 88.65 & 90.01 & \textbf{+1.36} & \textbf{0.0000} \\
-Structured Text Labels & 88.65 & 90.38 & \textbf{+1.73} & \textbf{0.0000} \\
-Top Words Scores & 88.65 & 89.41 & \textbf{+0.77} & \textbf{0.0030} \\
-Top Words Labels & 88.65 & 90.45 & \textbf{+1.81} & \textbf{0.0000} \\
-Natural Words & 88.65 & 89.65 & \textbf{+1.00} & \textbf{0.0002} \\
-Part Of Speech & 88.65 & 89.64 & \textbf{+1.00} & \textbf{0.0003} \\
+Baseline & 88.65 & -- & -- \\
+\midrule
+t_s & 87.33 & -1.31 & 1.0000 \\
+t_l & 88.27 & -0.38 & 0.8979 \\
+s_t_l & 90.01 & \textbf{+1.36} & \textbf{0.0000} \\
+s_t_s. & 90.38 & \textbf{+1.73} & \textbf{0.0000} \\
+t_w_s & 89.41 & \textbf{+0.77} & \textbf{0.0030} \\
+t_w_s & 90.45 & \textbf{+1.81} & \textbf{0.0000} \\
+n_w & 89.65 & \textbf{+1.00} & \textbf{0.0002} \\
+p_o_s & 89.64 & \textbf{+1.00} & \textbf{0.0003} \\
 \bottomrule
 \end{tabular}
-\end{table}

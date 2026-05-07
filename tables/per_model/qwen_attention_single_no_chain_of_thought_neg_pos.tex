@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Qwen - Attention - No CoT - neg pos}
-\label{tab:qwen-attention-single-no_chain_of_thought-neg_pos}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 94.14 & 94.19 & +0.05 & 0.3979 \\
-Text Labels & 94.14 & 94.39 & +0.25 & 0.0508 \\
-Structured Text Scores & 94.14 & 94.17 & +0.03 & 0.4428 \\
-Structured Text Labels & 94.14 & 94.27 & +0.13 & 0.1862 \\
-Top Words Scores & 94.14 & 94.27 & +0.13 & 0.1926 \\
-Top Words Labels & 94.14 & 94.45 & \textbf{+0.31} & \textbf{0.0154} \\
-Natural Words & 94.14 & 94.27 & +0.13 & 0.1794 \\
-Part Of Speech & 94.14 & 94.13 & -0.01 & 0.5000 \\
+Baseline & 94.14 & -- & -- \\
+\midrule
+t_s & 94.19 & +0.05 & 0.3979 \\
+t_l & 94.39 & +0.25 & 0.0508 \\
+s_t_l & 94.17 & +0.03 & 0.4428 \\
+s_t_s. & 94.27 & +0.13 & 0.1862 \\
+t_w_s & 94.27 & +0.13 & 0.1926 \\
+t_w_s & 94.45 & \textbf{+0.31} & \textbf{0.0154} \\
+n_w & 94.27 & +0.13 & 0.1794 \\
+p_o_s & 94.13 & -0.01 & 0.5000 \\
 \bottomrule
 \end{tabular}
-\end{table}

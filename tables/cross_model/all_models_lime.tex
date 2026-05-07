@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{Aggregated McNemar's Test across all judge models --- Lime explanations}
-\label{tab:aggregated-lime-all-models}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 91.82 & 91.31 & -0.51 & 0.9835 \\
-Text Labels & 91.82 & 92.04 & +0.22 & 0.1807 \\
-Structured Text Scores & 91.80 & 91.32 & -0.48 & 0.9782 \\
-Structured Text Labels & 91.82 & 91.47 & -0.35 & 0.9319 \\
-Top Words Scores & 91.81 & 92.26 & \textbf{+0.45} & \textbf{0.0288} \\
-Top Words Labels & 91.81 & 92.48 & \textbf{+0.67} & \textbf{0.0026} \\
-Natural Words & 91.81 & 91.67 & -0.14 & 0.7284 \\
-Part Of Speech & 91.81 & 91.63 & -0.18 & 0.7844 \\
+Baseline & 91.82 & -- & -- \\
+\midrule
+t_s & 91.31 & -0.51 & 0.9835 \\
+t_l & 92.04 & +0.22 & 0.1807 \\
+s_t_l & 91.32 & -0.48 & 0.9782 \\
+s_t_s. & 91.47 & -0.35 & 0.9319 \\
+t_w_s & 92.26 & \textbf{+0.45} & \textbf{0.0288} \\
+t_w_s & 92.48 & \textbf{+0.67} & \textbf{0.0026} \\
+n_w & 91.67 & -0.14 & 0.7284 \\
+p_o_s & 91.63 & -0.18 & 0.7844 \\
 \bottomrule
 \end{tabular}
-\end{table}

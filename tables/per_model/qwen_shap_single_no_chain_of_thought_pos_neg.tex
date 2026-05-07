@@ -1,20 +1,16 @@
-\begin{table}[htbp]
-\centering
-\small
-\caption{McNemar's Test: Qwen - SHAP - No CoT - pos neg}
-\label{tab:qwen-shap-single-no_chain_of_thought-pos_neg}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
 \toprule
-Format & Baseline(\%) & Accuracy(\%) & Relative Change(\%) & p-value \\
+Format & Acc & $\Delta$\% & $p$ \\
 \midrule
-Text Scores & 94.29 & 93.37 & -0.92 & 1.0000 \\
-Text Labels & 94.29 & 92.88 & -1.41 & 1.0000 \\
-Structured Text Scores & 94.29 & 92.97 & -1.32 & 1.0000 \\
-Structured Text Labels & 94.29 & 92.99 & -1.30 & 1.0000 \\
-Top Words Scores & 94.29 & 93.42 & -0.87 & 1.0000 \\
-Top Words Labels & 94.29 & 93.03 & -1.26 & 1.0000 \\
-Natural Words & 94.29 & 93.53 & -0.76 & 1.0000 \\
-Part Of Speech & 94.29 & 93.65 & -0.64 & 0.9998 \\
+Baseline & 94.29 & -- & -- \\
+\midrule
+t_s & 93.37 & -0.92 & 1.0000 \\
+t_l & 92.88 & -1.41 & 1.0000 \\
+s_t_l & 92.97 & -1.32 & 1.0000 \\
+s_t_s. & 92.99 & -1.30 & 1.0000 \\
+t_w_s & 93.42 & -0.87 & 1.0000 \\
+t_w_s & 93.03 & -1.26 & 1.0000 \\
+n_w & 93.53 & -0.76 & 1.0000 \\
+p_o_s & 93.65 & -0.64 & 0.9998 \\
 \bottomrule
 \end{tabular}
-\end{table}
