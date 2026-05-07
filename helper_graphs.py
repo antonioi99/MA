@@ -51,7 +51,7 @@ def collect_aggregated_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
                         'model': model_display[llm],
                         'explanation': explanation_display[exp],
                         'format': format_display[fmt],
-                        'relative_change': float(comparison['relative_change'] * 100),
+                        'absolute_change': float(comparison['absolute_change'] * 100),
                         'p_value': float(comparison['p_value']),
                         'significant': bool(comparison['significant']),
                         'baseline': float(comparison['accuracy_baseline'] * 100),  # added this
@@ -84,7 +84,7 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
 
     # Pivot for heatmap
     pivot_change = df.pivot_table(
-        index='format', columns='config', values='relative_change'
+        index='format', columns='config', values='absolute_change'
     )
     pivot_sig = df.pivot_table(
         index='format', columns='config', values='significant'
@@ -135,7 +135,7 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
         linewidths=0.5,
         linecolor='gray',
         cbar_kws={
-            'label': 'Relative Change (%)',
+            'label': 'Change (%)',
             'ticks': boundaries,
             'spacing': 'uniform'
         }
@@ -152,7 +152,7 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
                 )
 
     ax.set_title(
-        'Relative Change in Accuracy by Verbalization Format and Model\n'
+        'Change in Accuracy by Verbalization Format and Model\n'
         '(* = statistically significant, $p < 0.05$)',
         fontsize=13, pad=15
     )
@@ -197,8 +197,8 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
         sharex=False, sharey=True
     )
 
-    x_min = df['relative_change'].min() - 0.5
-    x_max = df['relative_change'].max() + 0.5
+    x_min = df['absolute_change'].min() - 0.5
+    x_max = df['absolute_change'].max() + 0.5
 
     for row_idx, model in enumerate(models):
         for col_idx, exp in enumerate(explanations):
@@ -208,12 +208,12 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
             subset = subset.set_index('format').reindex(row_order).reset_index()
 
             for i, r in subset.iterrows():
-                color = '#2ecc71' if r['relative_change'] > 0 else '#e74c3c'
+                color = '#2ecc71' if r['absolute_change'] > 0 else '#e74c3c'
                 hatch = '' if r['significant'] else '///'
 
                 ax.barh(
                     r['format'],
-                    r['relative_change'],
+                    r['absolute_change'],
                     color=color,
                     edgecolor='black',
                     linewidth=0.6,
@@ -238,7 +238,7 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
                 ax.set_ylabel('')
 
             if row_idx == 2:
-                ax.set_xlabel('Relative Change (%)', fontsize=8)
+                ax.set_xlabel('Change (%)', fontsize=8)
 
     # Legend
     legend_elements = [
@@ -257,7 +257,7 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
     )
 
     fig.suptitle(
-        'Relative Change in Accuracy by Model, Explanation Method, and Verbalization Format',
+        'Change in Accuracy by Model, Explanation Method, and Verbalization Format',
         fontsize=12, fontweight='bold', y=1.01
     )
 
@@ -310,8 +310,8 @@ def collect_per_order_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
                         'model': model_display[llm],
                         'explanation': explanation_display[exp],
                         'format': format_display[fmt],
-                        'relative_change_pos_neg': comp_pos_neg['relative_change'] * 100,
-                        'relative_change_neg_pos': comp_neg_pos['relative_change'] * 100,
+                        'absolute_change_pos_neg': comp_pos_neg['absolute_change'] * 100,
+                        'absolute_change_neg_pos': comp_neg_pos['absolute_change'] * 100,
                         'significant_pos_neg': comp_pos_neg['significant'],
                         'significant_neg_pos': comp_neg_pos['significant'],
                         'baseline_pos_neg': comp_pos_neg['accuracy_baseline'] * 100,
@@ -326,7 +326,7 @@ def collect_per_order_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
 
 
 def correlation_analysis(df: pd.DataFrame):
-    x = df['relative_change']
+    x = df['absolute_change']
     y = df['baseline']
 
     # Normality checks
@@ -334,7 +334,7 @@ def correlation_analysis(df: pd.DataFrame):
     _, p_norm_y = stats.shapiro(y)
 
     print("=== Normality (Shapiro-Wilk) ===")
-    print(f"  relative_change: p = {p_norm_x:.4f} {'✓ normal' if p_norm_x > 0.05 else '✗ not normal'}")
+    print(f"  absolute_change: p = {p_norm_x:.4f} {'✓ normal' if p_norm_x > 0.05 else '✗ not normal'}")
     print(f"  baseline:        p = {p_norm_y:.4f} {'✓ normal' if p_norm_y > 0.05 else '✗ not normal'}")
 
     both_normal = p_norm_x > 0.05 and p_norm_y > 0.05
@@ -396,7 +396,7 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
         for exp, color in explanation_colors.items():
             subset = df[(df['model'] == model) & (df['explanation'] == exp)]
             ax.scatter(
-                subset['relative_change'],
+                subset['absolute_change'],
                 subset['baseline'],
                 marker=marker,
                 color=color,
@@ -410,18 +410,18 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
     ax.set_xlim(-3.5, 3.5)
     ax.set_ylim(88, 95)
 
-    ax.set_xlabel('Relative Change in Accuracy (%)', fontsize=11)
+    ax.set_xlabel('Change in Accuracy (%)', fontsize=11)
     ax.set_ylabel('Baseline Accuracy (%)', fontsize=11)
     ax.set_title(
-        'Baseline Accuracy vs Relative Change',
+        'Baseline Accuracy vs Change',
         fontsize=12
     )
 
     # Trend line — dashed to signal non-significant correlation
-    z = np.polyfit(df['relative_change'], df['baseline'], 1)
+    z = np.polyfit(df['absolute_change'], df['baseline'], 1)
     p_fit = np.poly1d(z)
-    x_line = np.linspace(df['relative_change'].min(), df['relative_change'].max(), 200)
-    r_squared = np.corrcoef(df['relative_change'], df['baseline'])[0, 1] ** 2
+    x_line = np.linspace(df['absolute_change'].min(), df['absolute_change'].max(), 200)
+    r_squared = np.corrcoef(df['absolute_change'], df['baseline'])[0, 1] ** 2
     # ax.plot(x_line, p_fit(x_line), color='black', linewidth=1.5, linestyle='--', alpha=0.5,
     #         label='Trend line (n.s.)')
 
@@ -494,8 +494,8 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
 
     # Compute global symmetric axis limits
     all_vals = pd.concat([
-        df_order['relative_change_neg_pos'],
-        df_order['relative_change_pos_neg']
+        df_order['absolute_change_neg_pos'],
+        df_order['absolute_change_pos_neg']
     ])
     abs_max = max(abs(all_vals.min()), abs(all_vals.max())) + 0.5
     global_min = -abs_max
@@ -521,8 +521,8 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
                 )
 
                 ax.scatter(
-                    row['relative_change_neg_pos'],
-                    row['relative_change_pos_neg'],
+                    row['absolute_change_neg_pos'],
+                    row['absolute_change_pos_neg'],
                     marker=marker,
                     color=color,
                     s=size,
@@ -554,9 +554,9 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
         ax.set_yticks(ticks)
 
         ax.set_title(model, fontsize=12, fontweight='bold')
-        ax.set_xlabel('Relative Change --- NEGATIVE first (%)', fontsize=9)
+        ax.set_xlabel('Change --- NEGATIVE first (%)', fontsize=9)
         if col_idx == 0:
-            ax.set_ylabel('Relative Change --- POSITIVE first (%)', fontsize=9)
+            ax.set_ylabel('Change --- POSITIVE first (%)', fontsize=9)
         ax.grid(alpha=0.3)
 
     # Build combined legend
@@ -602,7 +602,7 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
         )
 
     fig.suptitle(
-        'Relative Change by Label Order: NEGATIVE first vs POSITIVE first\n'
+        'Change by Label Order: NEGATIVE first vs POSITIVE first\n'
         '(points on the diagonal are unaffected by positional bias)',
         fontsize=12, fontweight='bold'
     )

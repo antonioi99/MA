@@ -443,7 +443,6 @@ class McNemarAnalyzer:
         
         # Calculate change metrics
         absolute_change = accuracy_test - accuracy_baseline
-        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
         
         return {
             'baseline_format': baseline_format,
@@ -452,7 +451,6 @@ class McNemarAnalyzer:
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
-            'relative_change': relative_change,
             'both_correct': both_correct,
             'got_worse': baseline_correct_test_wrong,
             'got_better': baseline_wrong_test_correct,
@@ -502,7 +500,7 @@ class McNemarAnalyzer:
                     'top_words_labels': np.nan,
                     'natural_words': np.nan,
                     'part_of_speech': np.nan,
-                    'change': comparison['relative_change'],
+                    'change': comparison['absolute_change'],
                     'p': comparison['p_value']
                 }
                 # Fill in the test format accuracy
@@ -776,7 +774,6 @@ class McNemarAnalyzer:
         
         # Calculate change metrics
         absolute_change = accuracy_test - accuracy_baseline
-        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
         
         return {
             'baseline_format': baseline_format,
@@ -790,7 +787,6 @@ class McNemarAnalyzer:
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
-            'relative_change': relative_change,
             'both_correct': both_correct,
             'got_worse': got_worse,
             'got_better': got_better,
@@ -854,7 +850,7 @@ class McNemarAnalyzer:
                     'top_words_labels': np.nan,
                     'natural_words': np.nan,
                     'part_of_speech': np.nan,
-                    'change': comparison['relative_change'],
+                    'change': comparison['absolute_change'],
                     'p': comparison['p_value']
                 }
                 # Fill in the test format accuracy
@@ -1014,7 +1010,6 @@ class McNemarAnalyzer:
         accuracy_test = marginal_col_prob[True]
 
         absolute_change = accuracy_test - accuracy_baseline
-        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
 
         return {
             'baseline_format': baseline_format,
@@ -1027,7 +1022,6 @@ class McNemarAnalyzer:
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
-            'relative_change': relative_change,
             'both_correct': both_correct,
             'got_worse': got_worse,
             'got_better': got_better,
@@ -1096,7 +1090,7 @@ class McNemarAnalyzer:
                     'top_words_labels': np.nan,
                     'natural_words': np.nan,
                     'part_of_speech': np.nan,
-                    'change': comparison['relative_change'],
+                    'change': comparison['absolute_change'],
                     'p': comparison['p_value'],
                     'n_kept': comparison['n_total'],
                     'n_discarded': comparison['n_discarded']
@@ -1253,7 +1247,6 @@ class AggregatedAnalyzer:
         accuracy_test = (got_better + both_correct) / n_total
         
         absolute_change = accuracy_test - accuracy_baseline
-        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
         
         return {
             'baseline_format': baseline_format,
@@ -1264,7 +1257,6 @@ class AggregatedAnalyzer:
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
-            'relative_change': relative_change,
             'both_correct': both_correct,
             'got_worse': got_worse,
             'got_better': got_better,
@@ -1300,7 +1292,7 @@ class AggregatedAnalyzer:
                     'format': format_name.replace('_', ' ').title(),
                     'baseline': comparison['accuracy_baseline'],
                     'accuracy': comparison['accuracy_test'],
-                    'relative_change': comparison['relative_change'],
+                    'absolute_change': comparison['absolute_change'],
                     'p_value': comparison['p_value'],
                     'significant': comparison['significant'],
                     'n_tables': comparison['n_tables_aggregated']
@@ -1430,7 +1422,6 @@ class AggregatedAnalyzer:
         accuracy_test = (got_better + both_correct) / n_total
 
         absolute_change = accuracy_test - accuracy_baseline
-        relative_change = (accuracy_test / accuracy_baseline - 1.0) if accuracy_baseline > 0 else 0
 
         return {
             'baseline_format': baseline_format,
@@ -1442,7 +1433,6 @@ class AggregatedAnalyzer:
             'accuracy_baseline': accuracy_baseline,
             'accuracy_test': accuracy_test,
             'absolute_change': absolute_change,
-            'relative_change': relative_change,
             'both_correct': both_correct,
             'got_worse': got_worse,
             'got_better': got_better,
@@ -1479,7 +1469,7 @@ class AggregatedAnalyzer:
                     'format': format_name.replace('_', ' ').title(),
                     'baseline': comparison['accuracy_baseline'],
                     'accuracy': comparison['accuracy_test'],
-                    'relative_change': comparison['relative_change'],
+                    'absolute_change': comparison['absolute_change'],
                     'p_value': comparison['p_value'],
                     'significant': comparison['significant'],
                     'n_tables': comparison['n_tables_aggregated'],
@@ -1534,7 +1524,7 @@ class AggregatedAnalyzer:
             self.save_latex_table(df, explanation_type, output_file, conservative=True)
 
             print(f"\n{explanation_type.upper()} conservative results:")
-            print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant',
+            print(df[['baseline', 'accuracy', 'absolute_change', 'p_value', 'significant',
                     'n_discarded']].to_string())
     
     def to_latex(self, df: pd.DataFrame, explanation_type: str, 
@@ -1590,12 +1580,12 @@ class AggregatedAnalyzer:
 
         for format_name, row in df.iterrows():
             is_significant = row["p_value"] < 0.05 if not pd.isna(row["p_value"]) else False
-            is_positive = row["relative_change"] > 0 if not pd.isna(row["relative_change"]) else False
+            is_positive = row["absolute_change"] > 0 if not pd.isna(row["absolute_change"]) else False
             
             line = (f'{format_name} & '
                     f'{format_value(row["baseline"])} & '
                     f'{format_value(row["accuracy"])} & '
-                    f'{format_value(row["relative_change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
+                    f'{format_value(row["absolute_change"], is_change=True, is_significant=is_significant, is_positive=is_positive)} & '
                     f'{format_value(row["p_value"], is_pvalue=True, is_significant=is_significant, is_positive=is_positive)} \\\\')
             latex_lines.append(line)
         
@@ -1640,7 +1630,7 @@ class AggregatedAnalyzer:
             self.save_latex_table(df, explanation_type, output_file, conservative=False)
             
             print(f"\n{explanation_type.upper()} results:")
-            print(df[['baseline', 'accuracy', 'relative_change', 'p_value', 'significant']]
+            print(df[['baseline', 'accuracy', 'absolute_change', 'p_value', 'significant']]
                   .to_string())
         
 
