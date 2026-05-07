@@ -271,14 +271,14 @@ class McNemarAnalyzer:
         "natural_words", "part_of_speech"
     ]
     FORMAT_ABBREVIATIONS = {
-        'Text Scores': 't_s',
-        'Text Labels': 't_l',
-        'Structured Text Scores': 's_t_l',
-        'Structured Text Labels': 's_t_s.',
-        'Top Words Scores': 't_w_s',
-        'Top Words Labels': 't_w_s',
-        'Natural Words': 'n_w',
-        'Part Of Speech': 'p_o_s'
+        'Text Scores': 'TS',
+        'Text Labels': 'TL',
+        'Structured Text Scores': 'STL',
+        'Structured Text Labels': 'STS',
+        'Top Words Scores': 'TWS',
+        'Top Words Labels': 'TWL',
+        'Natural Words': 'NW',
+        'Part Of Speech': 'POS'
         }
     
     def __init__(self, base_path: str = "analysis"):
@@ -573,11 +573,23 @@ class McNemarAnalyzer:
             else:
                 return f'{val*100:.2f}'
 
+        prompting_display = {
+            'pos_neg': '(+/-)',
+            'neg_pos': '(-/+)',
+            'aggregated': 'Agg.',
+            'conservative': 'Cons.'
+        }
+        exp_display = config.explanation.upper() if config.explanation in ['lime', 'shap'] else config.explanation.title()
+        title = f"{exp_display} --- {prompting_display.get(config.prompting, config.prompting)}"
+
         latex_lines = []
-        latex_lines.append(r'\begin{tabular}{lrrr}')  # 4 columns: format, acc, delta, p
+        latex_lines.append(r'\begin{tabular}{lrrr}')
         latex_lines.append(r'\toprule')
+        latex_lines.append(f'\\multicolumn{{4}}{{c}}{{\\textbf{{{title}}}}} \\\\')
+        latex_lines.append(r'\midrule')
         latex_lines.append(r'Format & Acc & $\Delta$\% & $p$ \\')
         latex_lines.append(r'\midrule')
+
 
         # Baseline row
         baseline_row = df.iloc[0]
@@ -1522,9 +1534,16 @@ class AggregatedAnalyzer:
             else:
                 return f'{val*100:.2f}'
 
+        # Generate title
+        prefix = 'Conservative --- ' if conservative else ''
+        exp_display = explanation_type.upper() if explanation_type in ['lime', 'shap'] else explanation_type.title()
+        title = f"{prefix} --- {exp_display}"
+
         latex_lines = []
         latex_lines.append(r'\begin{tabular}{lrrr}')
         latex_lines.append(r'\toprule')
+        latex_lines.append(f'\\multicolumn{{4}}{{c}}{{\\textbf{{{title}}}}} \\\\')
+        latex_lines.append(r'\midrule')
         latex_lines.append(r'Format & Acc & $\Delta$\% & $p$ \\')
         latex_lines.append(r'\midrule')
 
