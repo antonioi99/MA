@@ -576,11 +576,11 @@ class McNemarAnalyzer:
         prompting_display = {
             'pos_neg': '(+/-)',
             'neg_pos': '(-/+)',
-            'aggregated': 'Agg.',
-            'conservative': 'Cons.'
+            'aggregated': '(aggregated)',
+            'conservative': '(conservative)'
         }
         exp_display = config.explanation.upper() if config.explanation in ['lime', 'shap'] else config.explanation.title()
-        title = f"{exp_display} --- {prompting_display.get(config.prompting, config.prompting)}"
+        title = f"{exp_display} {prompting_display.get(config.prompting, config.prompting)}"
 
         latex_lines = []
         latex_lines.append(r'\begin{tabular}{lrrr}')
@@ -1535,9 +1535,9 @@ class AggregatedAnalyzer:
                 return f'{val*100:.2f}'
 
         # Generate title
-        prefix = 'Conservative --- ' if conservative else ''
+        suffix = '(conservative)' if conservative else ''
         exp_display = explanation_type.upper() if explanation_type in ['lime', 'shap'] else explanation_type.title()
-        title = f"{prefix} --- {exp_display}"
+        title = f"{exp_display} {suffix}"
 
         latex_lines = []
         latex_lines.append(r'\begin{tabular}{lrrr}')
