@@ -183,7 +183,7 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     models = ['Llama', 'Qwen', 'M-Prometheus']
-    explanations = ['SHAP', 'LIME', 'Attention']
+    explanations = ['Attention', 'LIME', 'SHAP']
 
     row_order = [
         'Text Scores', 'Text Labels',
@@ -225,6 +225,7 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
             ax.axvline(x=0, color='black', linewidth=1, linestyle='--', alpha=0.5)
             ax.yaxis.grid(True, linestyle=':', alpha=0.4)
             ax.set_axisbelow(True)
+            ax.invert_yaxis() 
             ax.set_xlim(x_min, x_max)
             ax.tick_params(axis='x', labelsize=7)
             ax.tick_params(axis='y', labelsize=7)
@@ -688,6 +689,7 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         ax.grid(axis='x', alpha=0.3)
         ax.yaxis.grid(True, linestyle=':', alpha=0.3)
         ax.set_axisbelow(True)
+        ax.invert_yaxis() 
 
     # Legend
     exp_legend = [
