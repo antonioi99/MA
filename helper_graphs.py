@@ -151,11 +151,11 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
                     fontsize=14, fontweight='bold', color='black'
                 )
 
-    ax.set_title(
-        'Change in Accuracy by Verbalization Format and Model\n'
-        '(* = statistically significant, $p < 0.05$)',
-        fontsize=13, pad=15
-    )
+    # ax.set_title(
+    #     'Change in Accuracy by Verbalization Format and Model\n'
+    #     '(* = statistically significant, $p < 0.05$)',
+    #     fontsize=13, pad=15
+    # )
     ax.set_xlabel('Model --- Explanation Method', fontsize=11)
     ax.set_ylabel('Verbalization Format', fontsize=11)
     ax.tick_params(axis='x', labelsize=9, rotation=45)
@@ -257,10 +257,10 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
         frameon=True
     )
 
-    fig.suptitle(
-        'Change in Accuracy by Model, Explanation Method, and Verbalization Format',
-        fontsize=12, fontweight='bold', y=1.01
-    )
+    # fig.suptitle(
+    #     'Change in Accuracy by Model, Explanation Method, and Verbalization Format',
+    #     fontsize=12, fontweight='bold', y=1.01
+    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -413,10 +413,10 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
 
     ax.set_xlabel('Change in Accuracy (%)', fontsize=11)
     ax.set_ylabel('Baseline Accuracy (%)', fontsize=11)
-    ax.set_title(
-        'Baseline Accuracy vs Change',
-        fontsize=12
-    )
+    # ax.set_title(
+    #     'Baseline Accuracy vs Change',
+    #     fontsize=12
+    # )
 
     # Trend line — dashed to signal non-significant correlation
     z = np.polyfit(df['absolute_change'], df['baseline'], 1)
@@ -602,11 +602,11 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
             ncol=len(all_handles) #// 2  # two rows
         )
 
-    fig.suptitle(
-        'Change by Label Order: NEGATIVE first vs POSITIVE first\n'
-        '(points on the diagonal are unaffected by positional bias)',
-        fontsize=12, fontweight='bold'
-    )
+    # fig.suptitle(
+    #     'Change by Label Order: NEGATIVE first vs POSITIVE first\n'
+    #     '(points on the diagonal are unaffected by positional bias)',
+    #     fontsize=12, fontweight='bold'
+    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -713,11 +713,11 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         frameon=True
     )
 
-    fig.suptitle(
-        'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-        r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
-        fontsize=12, fontweight='bold'
-    )
+    # fig.suptitle(
+    #     'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
+    #     r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
+    #     fontsize=12, fontweight='bold'
+    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -879,11 +879,11 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
         columnspacing=0.8
     )
 
-    ax.set_title(
-        'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-        r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
-        fontsize=12, fontweight='bold'
-    )
+    # ax.set_title(
+    #     'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
+    #     r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
+    #     fontsize=12, fontweight='bold'
+    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
