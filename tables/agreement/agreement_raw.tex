@@ -1,12 +1,14 @@
-\begin{table}[ht]
-\centering
+\FloatBarrier
+\begin{center}
 \small
+\captionof{table}[Krippendorff's $\alpha$ table]{Per-item agreement between positive-first and negative-first label orderings, measured by Krippendorff's $\alpha$ (nominal), averaged across explanation methods (SHAP, LIME, Attention). A total of 1087 items (0.1\% of all classifications) were discarded due to missing or hallucinated responses.}
+\label{tab:agreement_raw}
 \begin{tabular}{lrrr}
 \toprule
 \textbf{Format} & \textbf{Llama} & \textbf{Qwen} & \textbf{M-Prometheus} \\
  & $\alpha_{K}$ & $\alpha_{K}$ & $\alpha_{K}$ \\
 \midrule
-Baseline & 0.655 & 0.924 & 0.904 \\
+Baseline (no expl.) & 0.655 & 0.924 & 0.904 \\
 \midrule
 Text Scores & 0.673 & 0.894 & 0.904 \\
 Text Labels & 0.767 & 0.896 & 0.903 \\
@@ -20,6 +22,4 @@ Part Of Speech & 0.723 & 0.892 & 0.913 \\
 \textit{Overall} & \textit{0.732} & \textit{0.897} & \textit{0.905} \\
 \bottomrule
 \end{tabular}
-\caption{Per-item agreement between positive-first and negative-first label orderings, measured by Krippendorff's $\alpha$ (nominal), averaged across explanation methods (SHAP, LIME, Attention). A total of 1087 items (0.1\% of all classifications) were discarded due to missing or hallucinated responses. A horizontal rule separates the baseline (no explanation) from verbalization formats.}
-\label{tab:agreement_raw}
-\end{table}
+\end{center}

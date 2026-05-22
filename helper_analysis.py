@@ -1639,6 +1639,7 @@ def compute_agreement_from_raw(
         'natural_words', 'part_of_speech'
     ]
     format_display = {f: f.replace('_', ' ').title() for f in format_files}
+    format_display['baseline'] = 'Baseline (no expl.)'  # override baseline display name
 
     model_display = {
         'llama': 'Llama',
@@ -1727,10 +1728,20 @@ def compute_agreement_from_raw(
         [''] + [r'$\alpha_{K}$' for _ in models]
     ) + r' \\'
 
+    caption = (
+        r"\captionof{table}[Krippendorff's $\alpha$ table]"
+        r"{Per-item agreement between positive-first and negative-first label orderings, "
+        r"measured by Krippendorff's $\alpha$ (nominal), averaged across explanation methods "
+        r"(SHAP, LIME, Attention). A total of 1087 items (0.1\% of all classifications) "
+        r"were discarded due to missing or hallucinated responses.}"
+    )
+
     lines = [
-        r'\begin{table}[ht]',
-        r'\centering',
+        r'\FloatBarrier',
+        r'\begin{center}',
         r'\small',
+        caption,
+        r'\label{tab:agreement_raw}',
         rf'\begin{{tabular}}{{{col_spec}}}',
         r'\toprule',
         header,
@@ -1773,14 +1784,7 @@ def compute_agreement_from_raw(
     lines += [
         r'\bottomrule',
         r'\end{tabular}',
-        rf'\caption{{Per-item agreement between positive-first and negative-first label orderings, '
-        rf"measured by Krippendorff's $\alpha$ (nominal), averaged across explanation methods "
-        rf'(SHAP, LIME, Attention). A total of {total_discarded} items '
-        rf'({pct_discarded:.1f}\% of all classifications) were discarded due to missing '
-        rf'or hallucinated responses. A horizontal rule separates the baseline (no explanation) '
-        rf'from verbalization formats.}}',
-        r'\label{tab:agreement_raw}',
-        r'\end{table}',
+        r'\end{center}'
     ]
 
     latex = '\n'.join(lines)
