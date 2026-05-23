@@ -30,4 +30,4 @@ df -h
 
 pip install lime accelerate --break-system-packages
 
-python main_graphs.py
+python main_analysis.py
