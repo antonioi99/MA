@@ -32,7 +32,9 @@ improved accuracy when provided with explanations.
 
 <img src="figures/forward_simulation.png" width="600">
 
-# Classifier Predictions
+## Python Package 
+
+### Classifier Predictions
 
 To get classifier ("yash3056/Llama-3.2-1B-imdb") predictions, run the following lines:
 ```
@@ -41,7 +43,7 @@ python main_classification_model.py --split test
 ```
 This will save the dev and test set predictions together with the golden labels in separate .json files in the `classification_model_prediction` folder. These predictions are necessary to calculate LLM-as-a-judge accuracy.
 
-# Explanations (SHAP, LIME, ATTENTION)
+### Explanations (SHAP, LIME, ATTENTION)
 
 To get explanations, run the following lines:
 ```
@@ -61,7 +63,7 @@ python main_explanations.py --type merge
 ```
 This will save all explanations in NLP format in the file `explanations/NLP_format/merged_data/merged_data.json`.
 
-# Similarity Groups
+### Similarity Groups
 
 As mentioned in the introduction, the judging LLMs will be shown 4 instances from the dev set for each instance of the test set. The grouping strategy is based on cosine similarity scores and balanced labelling (2 instances need to be positive and 2 negative). To create the similarity groups, run the following line:
 ```
@@ -89,7 +91,7 @@ This will save the groups in the `similarity_groups/similarity_groups.json` file
 }
 ```
 
-# Forward Simulation
+### Forward Simulation
 
 The following is an example line to run to conduct the forward simulation experiment:
 ```
