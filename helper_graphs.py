@@ -54,8 +54,8 @@ def collect_aggregated_results(analyzer: McNemarAnalyzer) -> pd.DataFrame:
                         'absolute_change': float(comparison['absolute_change'] * 100),
                         'p_value': float(comparison['p_value']),
                         'significant': bool(comparison['significant']),
-                        'baseline': float(comparison['accuracy_baseline'] * 100),  # added this
-                        'accuracy': float(comparison['accuracy_test'] * 100)       # added this
+                        'baseline': float(comparison['accuracy_baseline'] * 100),  
+                        'accuracy': float(comparison['accuracy_test'] * 100)   
                     })
                 except Exception as e:
                     print(f"Skipping {llm}-{exp}-{fmt}: {e}")
@@ -151,11 +151,6 @@ def plot_heatmap(df: pd.DataFrame, output_file: str = 'figures/heatmap_results.p
                     fontsize=14, fontweight='bold', color='black'
                 )
 
-    # ax.set_title(
-    #     'Change in Accuracy by Verbalization Format and Model\n'
-    #     '(* = statistically significant, $p < 0.05$)',
-    #     fontsize=13, pad=15
-    # )
     ax.set_xlabel('Model --- Explanation Method', fontsize=11)
     ax.set_ylabel('Verbalization Format', fontsize=11)
     ax.tick_params(axis='x', labelsize=9, rotation=45)
@@ -193,7 +188,7 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
     ]
 
     fig, axes = plt.subplots(
-        3, 3, figsize=(13, 9),  # reduced from (16, 14)
+        3, 3, figsize=(13, 9),
         sharex=False, sharey=True
     )
 
@@ -257,10 +252,6 @@ def plot_facet_bar(df: pd.DataFrame, output_file: str = 'figures/facet_bar_resul
         frameon=True
     )
 
-    # fig.suptitle(
-    #     'Change in Accuracy by Model, Explanation Method, and Verbalization Format',
-    #     fontsize=12, fontweight='bold', y=1.01
-    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -413,18 +404,13 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
 
     ax.set_xlabel('Change in Accuracy (%)', fontsize=11)
     ax.set_ylabel('Baseline Accuracy (%)', fontsize=11)
-    # ax.set_title(
-    #     'Baseline Accuracy vs Change',
-    #     fontsize=12
-    # )
+
 
     # Trend line — dashed to signal non-significant correlation
     z = np.polyfit(df['absolute_change'], df['baseline'], 1)
     p_fit = np.poly1d(z)
     x_line = np.linspace(df['absolute_change'].min(), df['absolute_change'].max(), 200)
     r_squared = np.corrcoef(df['absolute_change'], df['baseline'])[0, 1] ** 2
-    # ax.plot(x_line, p_fit(x_line), color='black', linewidth=1.5, linestyle='--', alpha=0.5,
-    #         label='Trend line (n.s.)')
 
 
     # Legend
@@ -444,10 +430,7 @@ def plot_accuracy_vs_change(df: pd.DataFrame,
             exp_legend +
             [
                 mpatches.Patch(color='none', label=r'$\bf{Correlation}$'),
-                # plt.Line2D([0], [0], color='black', linewidth=1.5, linestyle='--',
-                #     alpha=0.5, label='Trend line (n.s.)'), 
                 mpatches.Patch(color='none', label=f"Spearman $\\rho = {corr_results['spearman_r']:.3f}$, $p = {corr_results['spearman_p']:.3f}$ (n.s.)"),
-                # mpatches.Patch(color='none', label=f"Pearson $r = {corr_results['pearson_r']:.3f}$, $p = {corr_results['pearson_p']:.3f}$*"),
             ]
         )
     ax.legend(handles=all_handles, loc='upper right', fontsize=9,
@@ -581,11 +564,8 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
 
     from matplotlib.lines import Line2D
     all_handles = (
-        # [mpatches.Patch(color='none', label=r'$\bf{Explanation}$')] +
         exp_legend +
-        # [mpatches.Patch(color='none', label=r'$\bf{Significance}$')] +
         legend_handles_sorted +
-        # [mpatches.Patch(color='none', label=r'$\bf{Reference}$')] +
         [Line2D([0], [0], color='black', linestyle='--',
                 label='Diagonal (consistent behavior)')]
     )
@@ -601,12 +581,6 @@ def plot_label_order_comparison(df_order: pd.DataFrame,
             borderpad=0.8,
             ncol=len(all_handles) #// 2  # two rows
         )
-
-    # fig.suptitle(
-    #     'Change by Label Order: NEGATIVE first vs POSITIVE first\n'
-    #     '(points on the diagonal are unaffected by positional bias)',
-    #     fontsize=12, fontweight='bold'
-    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -632,7 +606,7 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         'Natural Words', 'Part Of Speech'
     ]
 
-    fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharey=True, sharex=True)  # ← taller figure
+    fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharey=True, sharex=True)
 
     for col_idx, model in enumerate(models):
         ax = axes[col_idx]
@@ -674,7 +648,7 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
         ax.set_yticks(range(len(row_order)))
         ax.set_yticklabels(row_order, fontsize=9)
 
-        # ← Model name as a bold y-axis label on the left
+
         ax.set_ylabel(model, fontsize=13, fontweight='bold', rotation=90,
                       labelpad=12, va='center')
 
@@ -706,18 +680,12 @@ def plot_paired_dot(df: pd.DataFrame, output_file: str = 'figures/paired_dot_res
 
     fig.legend(
         handles=all_handles,
-        # loc='upper right',
         ncol=1,
         fontsize=9,
         bbox_to_anchor=(0.96, 0.92),
         frameon=True
     )
 
-    # fig.suptitle(
-    #     'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-    #     r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
-    #     fontsize=12, fontweight='bold'
-    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -807,7 +775,7 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
             )
 
     # Extend y-axis to make room at the top
-    ax.set_ylim(-0.5, len(row_order) - 0.5 + 1)  # extra space at top
+    ax.set_ylim(-0.5, len(row_order) - 0.5 + 1)  
 
     # Write model names once, above the first row
     for model in models:
@@ -862,9 +830,7 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
     ]
 
     all_handles = (
-        # [mpatches.Patch(color='none', label=r'$\bf{Explanation:}$')] +
         exp_legend +
-        # [mpatches.Patch(color='none', label=r'$\bf{Markers:}$')] +
         marker_legend
     )
 
@@ -879,11 +845,6 @@ def plot_paired_dot_single(df: pd.DataFrame, output_file: str = 'figures/paired_
         columnspacing=0.8
     )
 
-    # ax.set_title(
-    #     'Baseline vs. Accuracy with Explanation by Model and Verbalization Format\n'
-    #     r'(filled dot = baseline, hollow $>$/$<$ = with explanation, * = significant $p < 0.05$)',
-    #     fontsize=12, fontweight='bold'
-    # )
 
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')

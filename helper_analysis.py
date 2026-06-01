@@ -108,7 +108,7 @@ class PredictionAnalyzer:
             }
             return self
         
-        # FIXED: Sort common_ids to ensure consistent ordering
+        # Sort common_ids to ensure consistent ordering
         sorted_common_ids = sorted(common_ids)
         
         # Calculate matches
@@ -170,7 +170,7 @@ class PredictionAnalyzer:
             'mismatches': mismatches,
             'missing_in_llm': len(set(self.original_predictions.keys()) - set(self.llm_predictions.keys())),
             'missing_in_original': len(set(self.llm_predictions.keys()) - set(self.original_predictions.keys())),
-            'test_ids_ordered': sorted_common_ids  # FIXED: Store ordered test_ids
+            'test_ids_ordered': sorted_common_ids 
         }
         
         return self
@@ -334,15 +334,13 @@ class McNemarAnalyzer:
         """
         results = self.load_results(config, format_name)
         
-        # FIXED: Check if test_ids_ordered exists in the results
         if 'test_ids_ordered' not in results:
-            # Fallback for old format - try to reconstruct
+            
             print(f"WARNING: 'test_ids_ordered' not found in {format_name}. Using fallback method.")
             n_total = results['total_compared']
             incorrect_ids = set(m['test_id'] for m in results['mismatches'])
             
-            # Try to infer test_ids from mismatches (this is a guess!)
-            # This assumes test_ids are strings like "0", "1", "2", etc.
+
             correct = np.array([str(i) not in incorrect_ids for i in range(n_total)])
             
             calculated_correct = correct.sum()
@@ -355,7 +353,7 @@ class McNemarAnalyzer:
                     f"Please regenerate results files with the fixed PredictionAnalyzer."
                 )
         else:
-            # NEW: Use the stored ordered test_ids
+
             test_ids_ordered = results['test_ids_ordered']
             incorrect_ids = set(m['test_id'] for m in results['mismatches'])
             

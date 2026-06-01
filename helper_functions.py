@@ -805,9 +805,6 @@ def create_similarity_groups_from_data(json_file_path, predictions_json, output_
     return result_dict
 
 
-############################
-# ATTENTION HELPER FUNCTIONS
-############################
 
 def group_tokens_into_words(tokens, offsets):
     """Group subword tokens into complete words."""

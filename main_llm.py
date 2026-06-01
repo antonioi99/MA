@@ -14,7 +14,7 @@ def main():
                         type=int,
                         required=True)
     parser.add_argument("--chain_of_thought",
-                        action='store_true',  # Present = True, Absent = False
+                        action='store_true',
                         help="Include chain of thought reasoning")
     parser.add_argument("--start",
                         type=int,
@@ -61,7 +61,7 @@ def main():
     dir_results = f'{main_folder}/{model_folder}/{explanation_folder}/{prompt_folder}/{chain_of_thought_folder}/{pred_order_folder}'
     os.makedirs(dir_results, exist_ok=True)
 
-    # end = args.start + args.data_size
+
     output_file = f'{dir_results}/{args.explanation_format}.json'  
 
 
