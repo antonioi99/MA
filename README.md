@@ -28,7 +28,7 @@ without exposure to explanations (McNemar's binomial test).
 If explanations are useful, the LLM should demonstrate
 improved accuracy when provided with explanations.
 
-
+![FORWARD SIMULATION](forward_simulation.svg)
 
 # Classifier Predictions
 
@@ -131,3 +131,5 @@ The following is the first entry of the mentioned file:
         }
     }
 ```
+
+[def]: forward_simulation.svg
