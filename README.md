@@ -271,9 +271,3 @@ If you use this code or dataset in your research, please cite:
     year = {2026}
 }
 ```
-
----
-
-## License
-
-MIT License. See `LICENSE` for details.
