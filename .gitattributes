@@ -1,3 +1,0 @@
-*.tar.gz filter=lfs diff=lfs merge=lfs -text
-similarity_groups/** filter=lfs diff=lfs merge=lfs -text
-test_results/** filter=lfs diff=lfs merge=lfs -text
