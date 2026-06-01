@@ -1,4 +1,6 @@
-# Introduction
+# Evaluating Explanation Quality through LLM-based Forward Simulation: A Study on Verbalization Strategies
+
+## Introduction
 
 The research adopts the forward simulation framework proposed by Hase and Bansal
 (2020), which tests whether explanations help a judge (in this case, an LLM) better
