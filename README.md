@@ -28,6 +28,7 @@ without exposure to explanations (McNemar's binomial test).
 If explanations are useful, the LLM should demonstrate
 improved accuracy when provided with explanations.
 
+![My Figure](forward_simulation.svg)
 
 # Classifier Predictions
 
