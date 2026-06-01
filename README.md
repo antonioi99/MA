@@ -266,8 +266,7 @@ If you use this code or dataset in your research, please cite:
 ```bibtex
 @mastersthesis{innocenti2026,
     author = {Innocenti, Antonio},
-    title = {Can {LLMs} Replace Human Evaluators? 
-             Assessing Explanation Quality through Forward Simulation},
+    title = {Evaluating Explanation Quality through LLM-based Forward Simulation: A Study on Verbalization Strategies},
     school = {University of Vienna},
     year = {2026}
 }
