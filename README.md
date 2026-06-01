@@ -28,7 +28,6 @@ without exposure to explanations (McNemar's binomial test).
 If explanations are useful, the LLM should demonstrate
 improved accuracy when provided with explanations.
 
-![Forward Simulation Framework](https://raw.githubusercontent.com/antonioi99/MA/main/forward_simulation.svg)
 
 # Classifier Predictions
 
