@@ -49,7 +49,8 @@ Three open-source LLM judges are evaluated:
 
 ## Requirements
 
-Install the required dependencies with:
+This project requires Python 3.10.12. Install the required 
+dependencies with:
 
 ```bash
 pip install -r requirements.txt
