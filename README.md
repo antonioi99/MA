@@ -1,6 +1,5 @@
 # Evaluating Explanation Quality through LLM-based Forward Simulation: A Study on Verbalization Strategies
 
-[![DOI](https://zenodo.org/badge/20505242.svg)](https://zenodo.org/records/20505242)
 
 ## Introduction
 
