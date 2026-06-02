@@ -1,6 +1,6 @@
 # Evaluating Explanation Quality through LLM-based Forward Simulation: A Study on Verbalization Strategies
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20505242.svg)](https://doi.org/10.5281/zenodo.20505242)
+[![DOI](https://zenodo.org/badge/20505242.svg)](https://zenodo.org/records/20505242)
 
 ## Introduction
 
@@ -82,14 +82,7 @@ The repository contains the following files:
 | `test_results/` | LLM judge predictions for all 162 configurations | `main_llm.py` |
 
 If you download these files directly from Zenodo, you can skip the 
-corresponding generation steps and proceed directly to the analysis:
-
-```bash
-python main_analysis.py
-python main_graphs.py
-```
-
----
+corresponding generation steps and proceed directly to the *Analysis and Graphs* section.
 
 ## Python Package
 
