@@ -116,8 +116,7 @@ Raw explanation objects are saved as `.pkl` files in
 To convert raw explanations into the eight verbalization formats, run:
 
 ```bash
-python main_explanations.py --type formatter --subset_size 7500 --start 0
-python main_explanations.py --type formatter --subset_size 7500 --start 7500
+python main_explanations.py --type formatter --subset_size 15000 --start 0
 ```
 
 To merge all verbalization files into a single JSON file required for 
